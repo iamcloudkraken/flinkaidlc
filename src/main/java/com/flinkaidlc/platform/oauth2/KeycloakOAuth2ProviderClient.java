@@ -5,6 +5,8 @@ import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
+import org.springframework.util.LinkedMultiValueMap;
+import org.springframework.util.MultiValueMap;
 import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.RestClient;
 
@@ -114,10 +116,17 @@ public class KeycloakOAuth2ProviderClient implements OAuth2ProviderClient {
     @SuppressWarnings("unchecked")
     private String fetchAdminToken() {
         try {
+            // Use MultiValueMap so Spring's FormHttpMessageConverter properly URL-encodes
+            // each field value — prevents injection if clientId/secret contain '&' or '='.
+            MultiValueMap<String, String> formBody = new LinkedMultiValueMap<>();
+            formBody.add("grant_type", "client_credentials");
+            formBody.add("client_id", adminClientId);
+            formBody.add("client_secret", adminClientSecret);
+
             Map<String, Object> tokenResponse = restClient.post()
                 .uri(adminUrl + "/realms/" + realm + "/protocol/openid-connect/token")
                 .contentType(MediaType.APPLICATION_FORM_URLENCODED)
-                .body("grant_type=client_credentials&client_id=" + adminClientId + "&client_secret=" + adminClientSecret)
+                .body(formBody)
                 .retrieve()
                 .body(Map.class);
 

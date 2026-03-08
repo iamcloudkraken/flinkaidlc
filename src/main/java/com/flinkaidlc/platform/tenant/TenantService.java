@@ -15,6 +15,7 @@ import com.flinkaidlc.platform.repository.PipelineRepository;
 import com.flinkaidlc.platform.repository.TenantRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -86,7 +87,12 @@ public class TenantService {
         tenant.setFid(fid);
         tenant.setStatus(TenantStatus.ACTIVE);
         tenant.updateQuota(request.maxPipelines(), request.maxTotalParallelism());
-        tenant = tenantRepository.save(tenant);
+        try {
+            tenant = tenantRepository.saveAndFlush(tenant);
+        } catch (DataIntegrityViolationException e) {
+            // Race condition: concurrent request won the slug uniqueness race at DB level
+            throw new SlugAlreadyInUseException(request.slug());
+        }
 
         UUID tenantId = tenant.getTenantId();
         log.info("Persisted tenant tenantId={} slug={}", tenantId, request.slug());
