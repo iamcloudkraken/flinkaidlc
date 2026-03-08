@@ -1,0 +1,34 @@
+spring:
+  datasource:
+    url: ${DATABASE_URL}
+    username: ${DATABASE_USER}
+    password: ${DATABASE_PASSWORD}
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    open-in-view: false
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          issuer-uri: ${OAUTH2_ISSUER_URI}
+  flyway:
+    enabled: true
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+
+flink:
+  sql-runner:
+    image: ${FLINK_SQL_RUNNER_IMAGE:flink-sql-runner:latest}
+  state:
+    s3-bucket: ${FLINK_STATE_S3_BUCKET:flink-state}
+
+kubernetes:
+  namespace-prefix: "tenant-"
+
+jwt:
+  tenant-id-claim: tenant_id
