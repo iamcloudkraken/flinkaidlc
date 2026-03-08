@@ -21,7 +21,12 @@ public class TenantJwtAuthenticationConverter implements Converter<Jwt, Abstract
         if (tenantIdStr == null) {
             throw new BadCredentialsException("JWT missing tenant_id claim");
         }
-        UUID tenantId = UUID.fromString(tenantIdStr);
+        UUID tenantId;
+        try {
+            tenantId = UUID.fromString(tenantIdStr);
+        } catch (IllegalArgumentException e) {
+            throw new BadCredentialsException("Invalid tenant_id claim format");
+        }
         TenantAuthenticationPrincipal principal = new TenantAuthenticationPrincipal(tenantId);
         return new TenantJwtAuthenticationToken(jwt, principal);
     }

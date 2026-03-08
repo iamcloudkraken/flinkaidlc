@@ -32,3 +32,11 @@ kubernetes:
 
 jwt:
   tenant-id-claim: tenant_id
+
+# Set registration.enabled=false to disable self-service tenant registration
+# (POST /api/v1/tenants without auth). Useful for enterprise deployments where
+# tenants are provisioned exclusively by an internal admin tool.
+# In all deployments, this endpoint MUST be protected at the API-gateway layer
+# with rate limiting to prevent abuse.
+registration:
+  enabled: true

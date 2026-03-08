@@ -17,7 +17,7 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(EntityNotFoundException.class)
     public ResponseEntity<ProblemDetail> handleEntityNotFoundException(EntityNotFoundException ex) {
-        ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.NOT_FOUND, ex.getMessage());
+        ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.NOT_FOUND, "The requested resource was not found.");
         problem.setType(URI.create("about:blank"));
         problem.setTitle("Not Found");
         return ResponseEntity.status(HttpStatus.NOT_FOUND)
@@ -27,7 +27,7 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(AccessDeniedException.class)
     public ResponseEntity<ProblemDetail> handleAccessDeniedException(AccessDeniedException ex) {
-        ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.FORBIDDEN, ex.getMessage());
+        ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.FORBIDDEN, "Access to the requested resource is denied.");
         problem.setType(URI.create("about:blank"));
         problem.setTitle("Forbidden");
         return ResponseEntity.status(HttpStatus.FORBIDDEN)
@@ -37,6 +37,7 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(ValidationException.class)
     public ResponseEntity<ProblemDetail> handleValidationException(ValidationException ex) {
+        // ValidationException is application-defined; its message is safe to surface.
         ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.BAD_REQUEST, ex.getMessage());
         problem.setType(URI.create("about:blank"));
         problem.setTitle("Bad Request");
@@ -47,6 +48,7 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(ResourceLimitExceededException.class)
     public ResponseEntity<ProblemDetail> handleResourceLimitExceededException(ResourceLimitExceededException ex) {
+        // ResourceLimitExceededException is application-defined; its message is safe to surface.
         ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.TOO_MANY_REQUESTS, ex.getMessage());
         problem.setType(URI.create("about:blank"));
         problem.setTitle("Too Many Requests");

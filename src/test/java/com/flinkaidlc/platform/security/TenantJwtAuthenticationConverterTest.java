@@ -47,4 +47,21 @@ class TenantJwtAuthenticationConverterTest {
                 .isInstanceOf(BadCredentialsException.class)
                 .hasMessageContaining("tenant_id");
     }
+
+    @Test
+    void convertJwtWithMalformedTenantIdClaimThrowsBadCredentialsWithoutInternalDetails() {
+        Jwt jwt = Jwt.withTokenValue("test-token")
+                .header("alg", "none")
+                .subject("test-subject")
+                .issuedAt(Instant.now())
+                .expiresAt(Instant.now().plusSeconds(3600))
+                .claim("tenant_id", "not-a-uuid")
+                .build();
+
+        assertThatThrownBy(() -> converter.convert(jwt))
+                .isInstanceOf(BadCredentialsException.class)
+                .hasMessage("Invalid tenant_id claim format")
+                // The raw IllegalArgumentException message must not leak through.
+                .hasNoCause();
+    }
 }
