@@ -36,8 +36,7 @@ class EntityPersistenceIntegrationTest extends AbstractIntegrationTest {
         tenant.setContactEmail("admin@acme.com");
         tenant.setFid("fid-acme-001");
         tenant.setStatus(TenantStatus.ACTIVE);
-        tenant.setMaxPipelines(20);
-        tenant.setMaxTotalParallelism(100);
+        tenant.updateQuota(20, 100);
 
         Tenant saved = tenantRepository.save(tenant);
         entityManager.flush();
