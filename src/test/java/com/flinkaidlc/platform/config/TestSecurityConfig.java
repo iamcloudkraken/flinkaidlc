@@ -7,7 +7,6 @@ import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.security.oauth2.jwt.JwtDecoder;
 
 import java.time.Instant;
-import java.util.Map;
 import java.util.UUID;
 
 /**
@@ -28,9 +27,7 @@ public class TestSecurityConfig {
                 .issuedAt(Instant.now())
                 .expiresAt(Instant.now().plusSeconds(3600))
                 .claim("tenant_id", TEST_TENANT_ID.toString())
-                .claims(claims -> claims.putAll(Map.of(
-                        "iss", "http://localhost:9999/auth/realms/test"
-                )))
+                .claim("iss", "http://localhost:9999/auth/realms/test")
                 .build();
     }
 }
