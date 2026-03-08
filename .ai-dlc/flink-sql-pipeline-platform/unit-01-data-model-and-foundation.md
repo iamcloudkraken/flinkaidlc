@@ -1,5 +1,5 @@
 ---
-status: pending
+status: completed
 depends_on: []
 branch: ai-dlc/flink-sql-pipeline-platform/01-data-model-and-foundation
 discipline: backend
