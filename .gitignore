@@ -1,0 +1,12 @@
+# SSH keys
+\
+\.pub
+
+# Claude Code local settings
+.claude/settings.local.json
+
+# AI-DLC worktrees (auto-generated, not for version control)
+.ai-dlc/worktrees/
+
+# OS
+.DS_Store

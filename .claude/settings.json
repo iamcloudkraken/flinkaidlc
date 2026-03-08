@@ -1,0 +1,32 @@
+{
+  "hooks": {
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "han hook dispatch UserPromptSubmit",
+            "timeout": 30000
+          }
+        ]
+      }
+    ],
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "han hook dispatch SessionStart",
+            "timeout": 30000
+          }
+        ]
+      }
+    ]
+  },
+  "plugins": [
+    "github:thebushidocollective/ai-dlc"
+  ],
+  "enabledPlugins": {
+    "ai-dlc@ai-dlc": true
+  }
+}
