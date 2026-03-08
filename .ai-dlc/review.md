@@ -8,7 +8,7 @@
 - [x] **Criterion 2 — JPA entities persist/retrieve correctly in integration tests**
   All five entities (`Tenant`, `Pipeline`, `PipelineSource`, `PipelineSink`, `PipelineDeployment`) are properly annotated with `@Entity`, correct `@Table`, `@Column`, `@Enumerated`, `@UuidGenerator`, and lifecycle callbacks (`@PrePersist`/`@PreUpdate`). `EntityPersistenceIntegrationTest` uses a real Postgres 16 container (via Testcontainers), flushes/clears the `EntityManager`, and asserts round-trip fidelity. `PipelineDeployment` correctly uses `@MapsId` with a shared PK.
 
-  **BUG (compile-time failure):** `EntityPersistenceIntegrationTest` lines 39–40 call `tenant.setMaxPipelines(20)` and `tenant.setMaxTotalParallelism(100)`, but the blue-team fix added `@Setter(AccessLevel.NONE)` to both fields on `Tenant` (removing those setters). The test will not compile. The test must be updated to use `tenant.updateQuota(20, 100)` instead.
+  **Fix verified:** `EntityPersistenceIntegrationTest` line 39 now calls `tenant.updateQuota(20, 100)`. The removed setters (`setMaxPipelines`, `setMaxTotalParallelism`) are no longer referenced. `Tenant.updateQuota(int, int)` exists at line 53 of `Tenant.java`, guarded by a positive-value check, with `@Setter(AccessLevel.NONE)` on both quota fields. Compile error is resolved.
 
 - [x] **Criterion 3 — `POST /api/v1/tenants` accessible without auth; all other `/api/**` return 401 without JWT**
   `SecurityConfig` permits `POST /api/v1/tenants` (when `registration.enabled=true`, the default), requires authentication for all `/api/**`, and uses `denyAll()` as the catch-all. Spring Security's OAuth2 resource server returns 401 automatically for missing/invalid JWTs. `SecurityIntegrationTest` asserts that `POST /api/v1/tenants` does not return 401, that `GET /api/v1/pipelines` returns 401 without a token, and that a valid (mocked) JWT is not rejected. Logic is correct.
@@ -26,7 +26,7 @@
 
 ### BLOCKING
 
-1. **Compile failure in `EntityPersistenceIntegrationTest`** — `tenant.setMaxPipelines(20)` and `tenant.setMaxTotalParallelism(100)` (lines 39–40) call setters that no longer exist after the blue-team introduced `@Setter(AccessLevel.NONE)`. The test will fail to compile. Fix: replace both calls with `tenant.updateQuota(20, 100)` and assert against `100` and `20` respectively in the assertions block.
+~~1. **Compile failure in `EntityPersistenceIntegrationTest`** — resolved. `tenant.updateQuota(20, 100)` is now used; the removed setters are gone.~~
 
 ### NON-BLOCKING (deferred by design or minor)
 
@@ -40,21 +40,10 @@
 
 ## Verdict
 
-**REJECTED**
+**APPROVED**
 
-One blocking compile error exists: `EntityPersistenceIntegrationTest` calls `setMaxPipelines()` and `setMaxTotalParallelism()` which were removed by the blue-team security fix. The build will not compile as-is. All other criteria are satisfied and the security fixes are correctly applied.
-
-**Required fix before re-review:**
-In `EntityPersistenceIntegrationTest.persistAndRetrieveTenant()`, replace:
-```java
-tenant.setMaxPipelines(20);
-tenant.setMaxTotalParallelism(100);
-```
-with:
-```java
-tenant.updateQuota(20, 100);
-```
+The blocking compile error has been resolved. `EntityPersistenceIntegrationTest.persistAndRetrieveTenant()` now calls `tenant.updateQuota(20, 100)` (line 39); the removed setters are absent from the file. `Tenant.updateQuota(int, int)` is correctly implemented with positive-value validation, and both quota fields are protected by `@Setter(AccessLevel.NONE)`. All 6 success criteria are satisfied. Remaining non-blocking items (items 2–5) are acknowledged deferrals and hygiene notes, none of which block merge.
 
 ## Merge Readiness
 
-Not Ready — blocked by compile failure in `EntityPersistenceIntegrationTest`.
+Ready to merge.
