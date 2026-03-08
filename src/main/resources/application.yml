@@ -26,12 +26,23 @@ flink:
     image: ${FLINK_SQL_RUNNER_IMAGE:flink-sql-runner:latest}
   state:
     s3-bucket: ${FLINK_STATE_S3_BUCKET:flink-state}
+  pods-per-pipeline: ${FLINK_PODS_PER_PIPELINE:4}
 
 kubernetes:
   namespace-prefix: "tenant-"
+  platform-namespace: ${KUBERNETES_PLATFORM_NAMESPACE:flink-platform}
 
 jwt:
   tenant-id-claim: tenant_id
+
+# OAuth2 admin client configuration (Keycloak).
+# Leave oauth2.admin.url unset to use the no-op stub (suitable for local dev / tests).
+oauth2:
+  admin:
+    url: ${OAUTH2_ADMIN_URL:}
+    realm: ${OAUTH2_ADMIN_REALM:flink-platform}
+    client-id: ${OAUTH2_ADMIN_CLIENT_ID:}
+    client-secret: ${OAUTH2_ADMIN_CLIENT_SECRET:}
 
 # Set registration.enabled=false to disable self-service tenant registration
 # (POST /api/v1/tenants without auth). Useful for enterprise deployments where
