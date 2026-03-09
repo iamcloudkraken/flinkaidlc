@@ -63,7 +63,7 @@ class FlinkOrchestrationServiceImplTest {
 
         Tenant tenant = new Tenant();
         tenant.setSlug(TENANT_SLUG);
-        when(tenantRepository.findById(TEST_TENANT_ID)).thenReturn(Optional.of(tenant));
+        lenient().when(tenantRepository.findById(TEST_TENANT_ID)).thenReturn(Optional.of(tenant));
     }
 
     @Test
@@ -202,7 +202,15 @@ class FlinkOrchestrationServiceImplTest {
     }
 
     private void mockK8sDeleteOperations() {
-        mockK8sFlinkDeployment();
+        // Mock FlinkDeployment (genericKubernetesResources) for delete
+        var genericResources = mock(io.fabric8.kubernetes.client.dsl.MixedOperation.class);
+        var genericInNamespace = mock(io.fabric8.kubernetes.client.dsl.NonNamespaceOperation.class);
+        var genericWithName = mock(io.fabric8.kubernetes.client.dsl.Resource.class);
+        when(k8sClient.genericKubernetesResources(anyString(), anyString())).thenReturn(genericResources);
+        when(genericResources.inNamespace(anyString())).thenReturn((io.fabric8.kubernetes.client.dsl.NonNamespaceOperation) genericInNamespace);
+        when(genericInNamespace.withName(anyString())).thenReturn(genericWithName);
+
+        // Mock ConfigMap for delete
         var configMaps = mock(io.fabric8.kubernetes.client.dsl.MixedOperation.class);
         var inNamespace = mock(io.fabric8.kubernetes.client.dsl.NonNamespaceOperation.class);
         var withName = mock(io.fabric8.kubernetes.client.dsl.Resource.class);

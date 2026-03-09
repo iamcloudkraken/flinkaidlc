@@ -8,5 +8,8 @@
 # AI-DLC worktrees (auto-generated, not for version control)
 .ai-dlc/worktrees/
 
+# Maven
+target/
+
 # OS
 .DS_Store

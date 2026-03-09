@@ -55,6 +55,8 @@ class FlinkSqlGeneratorTest {
     @Test
     void generate_multipleSourcesAndSinks() {
         Pipeline pipeline = buildPipeline("INSERT INTO sink1 SELECT * FROM src1");
+        pipeline.getSources().get(0).setTableName("src1");
+        pipeline.getSinks().get(0).setTableName("sink1");
 
         PipelineSource src2 = new PipelineSource();
         src2.setTableName("src2");

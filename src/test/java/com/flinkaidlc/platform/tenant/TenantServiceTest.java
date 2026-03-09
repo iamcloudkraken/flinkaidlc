@@ -10,6 +10,7 @@ import com.flinkaidlc.platform.oauth2.OAuth2ProviderClient;
 import com.flinkaidlc.platform.oauth2.OAuth2ProviderException;
 import com.flinkaidlc.platform.repository.PipelineRepository;
 import com.flinkaidlc.platform.repository.TenantRepository;
+import com.flinkaidlc.platform.orchestration.FlinkOrchestrationService;
 import com.flinkaidlc.platform.domain.PipelineStatus;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -43,11 +44,14 @@ class TenantServiceTest {
     @Mock
     private OAuth2ProviderClient oauth2Client;
 
+    @Mock
+    private FlinkOrchestrationService orchestrationService;
+
     private TenantService tenantService;
 
     @BeforeEach
     void setUp() {
-        tenantService = new TenantService(tenantRepository, pipelineRepository, provisioner, oauth2Client);
+        tenantService = new TenantService(tenantRepository, pipelineRepository, provisioner, oauth2Client, orchestrationService);
     }
 
     // ---- onboardTenant ----
@@ -59,7 +63,7 @@ class TenantServiceTest {
         when(tenantRepository.findBySlug("acme")).thenReturn(Optional.empty());
 
         Tenant saved = tenantWithId(UUID.randomUUID(), "acme");
-        when(tenantRepository.save(any(Tenant.class))).thenReturn(saved);
+        when(tenantRepository.saveAndFlush(any(Tenant.class))).thenReturn(saved);
 
         OnboardTenantResponse response = tenantService.onboardTenant(request);
 
@@ -92,7 +96,7 @@ class TenantServiceTest {
         when(tenantRepository.findBySlug("acme")).thenReturn(Optional.empty());
 
         Tenant saved = tenantWithId(UUID.randomUUID(), "acme");
-        when(tenantRepository.save(any(Tenant.class))).thenReturn(saved);
+        when(tenantRepository.saveAndFlush(any(Tenant.class))).thenReturn(saved);
 
         doThrow(new RuntimeException("K8s unavailable")).when(provisioner)
             .provision(anyString(), anyInt(), anyInt());
@@ -111,7 +115,7 @@ class TenantServiceTest {
         when(tenantRepository.findBySlug("acme")).thenReturn(Optional.empty());
 
         Tenant saved = tenantWithId(UUID.randomUUID(), "acme");
-        when(tenantRepository.save(any(Tenant.class))).thenReturn(saved);
+        when(tenantRepository.saveAndFlush(any(Tenant.class))).thenReturn(saved);
 
         doThrow(new OAuth2ProviderException("Keycloak down")).when(oauth2Client)
             .registerClient(anyString(), anyString());
@@ -131,7 +135,7 @@ class TenantServiceTest {
 
         Tenant saved = tenantWithId(UUID.randomUUID(), "acme");
         ArgumentCaptor<Tenant> captor = ArgumentCaptor.forClass(Tenant.class);
-        when(tenantRepository.save(captor.capture())).thenReturn(saved);
+        when(tenantRepository.saveAndFlush(captor.capture())).thenReturn(saved);
 
         tenantService.onboardTenant(request);
 

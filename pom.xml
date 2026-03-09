@@ -125,9 +125,17 @@
 
         <!-- JSQLParser for SQL validation -->
         <dependency>
-            <groupId>net.sf.jsqlparser</groupId>
+            <groupId>com.github.jsqlparser</groupId>
             <artifactId>jsqlparser</artifactId>
             <version>4.9</version>
+        </dependency>
+
+        <!-- Fabric8 Kubernetes Server Mock for tests -->
+        <dependency>
+            <groupId>io.fabric8</groupId>
+            <artifactId>kubernetes-server-mock</artifactId>
+            <version>${fabric8.version}</version>
+            <scope>test</scope>
         </dependency>
 
         <!-- WireMock for integration tests -->

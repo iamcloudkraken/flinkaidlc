@@ -19,11 +19,14 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import org.springframework.test.context.TestPropertySource;
+
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
 @WebMvcTest(controllers = GlobalExceptionHandlerIntegrationTest.TestController.class)
-@Import({GlobalExceptionHandler.class, GlobalExceptionHandlerIntegrationTest.TestSecurityPermitAll.class})
+@Import({GlobalExceptionHandler.class, GlobalExceptionHandlerIntegrationTest.TestController.class, GlobalExceptionHandlerIntegrationTest.TestSecurityPermitAll.class})
+@TestPropertySource(properties = "OAUTH2_ISSUER_URI=http://localhost/test-issuer")
 class GlobalExceptionHandlerIntegrationTest {
 
     @Autowired
