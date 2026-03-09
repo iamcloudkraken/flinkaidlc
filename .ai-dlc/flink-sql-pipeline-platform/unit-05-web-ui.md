@@ -1,5 +1,5 @@
 ---
-status: pending
+status: completed
 depends_on: [unit-02-tenant-onboarding-api, unit-03-pipeline-management-api]
 branch: ai-dlc/flink-sql-pipeline-platform/05-web-ui
 discipline: frontend
