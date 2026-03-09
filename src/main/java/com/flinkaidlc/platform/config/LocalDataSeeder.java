@@ -8,10 +8,10 @@ import org.slf4j.LoggerFactory;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
 import org.springframework.context.annotation.Profile;
 import org.springframework.context.event.EventListener;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.lang.reflect.Field;
 import java.util.UUID;
 
 /**
@@ -36,10 +36,13 @@ public class LocalDataSeeder {
 
     private final TenantRepository tenantRepository;
     private final PipelineRepository pipelineRepository;
+    private final JdbcTemplate jdbcTemplate;
 
-    public LocalDataSeeder(TenantRepository tenantRepository, PipelineRepository pipelineRepository) {
+    public LocalDataSeeder(TenantRepository tenantRepository, PipelineRepository pipelineRepository,
+                           JdbcTemplate jdbcTemplate) {
         this.tenantRepository = tenantRepository;
         this.pipelineRepository = pipelineRepository;
+        this.jdbcTemplate = jdbcTemplate;
     }
 
     @EventListener(ApplicationReadyEvent.class)
@@ -52,20 +55,19 @@ public class LocalDataSeeder {
 
         log.info("[local] Seeding demo tenant and pipeline...");
 
-        // Create demo tenant
-        Tenant tenant = new Tenant();
-        setTenantId(tenant, DEMO_TENANT_ID);
-        tenant.setSlug("demo");
-        tenant.setName("Demo Org");
-        tenant.setContactEmail("dev@local.dev");
-        tenant.setFid("demo-fid-local");
-        tenant.setStatus(TenantStatus.ACTIVE);
-        tenant.updateQuota(10, 20);
-        tenant = tenantRepository.save(tenant);
+        // Insert tenant directly via JDBC to ensure the deterministic UUID is used,
+        // bypassing Hibernate's @UuidGenerator which ignores pre-set values on merge().
+        jdbcTemplate.update(
+            "INSERT INTO tenants (tenant_id, slug, name, contact_email, fid, status, " +
+            "max_pipelines, max_total_parallelism, created_at, updated_at) " +
+            "VALUES (?, 'demo', 'Demo Org', 'dev@local.dev', 'demo-fid-local', 'ACTIVE', " +
+            "10, 20, NOW(), NOW())",
+            DEMO_TENANT_ID
+        );
 
-        log.info("[local] Created demo tenant: id={} slug=demo", tenant.getTenantId());
+        log.info("[local] Created demo tenant: id={} slug=demo", DEMO_TENANT_ID);
 
-        // Create demo pipeline
+        // Create demo pipeline using the known tenant ID
         Pipeline pipeline = new Pipeline();
         pipeline.setTenantId(DEMO_TENANT_ID);
         pipeline.setName("Hello World Pipeline");
@@ -84,7 +86,7 @@ public class LocalDataSeeder {
         source.setStartupMode(StartupMode.GROUP_OFFSETS);
         source.setSchemaRegistryUrl("http://schema-registry:8082");
         source.setAvroSubject("demo-input-value");
-        source.setWatermarkDelayMs(5000);
+        source.setWatermarkDelayMs(5000L);
         pipeline.addSource(source);
 
         PipelineSink sink = new PipelineSink();
@@ -99,16 +101,5 @@ public class LocalDataSeeder {
         pipeline = pipelineRepository.save(pipeline);
         log.info("[local] Created demo pipeline: id={} name='Hello World Pipeline'", pipeline.getPipelineId());
         log.info("[local] Seed complete. Open http://localhost:3000 to get started.");
-    }
-
-    /** Reflectively set the tenantId field so the seed tenant gets a deterministic ID. */
-    private void setTenantId(Tenant tenant, UUID id) {
-        try {
-            Field field = Tenant.class.getDeclaredField("tenantId");
-            field.setAccessible(true);
-            field.set(tenant, id);
-        } catch (Exception e) {
-            log.warn("[local] Could not set deterministic tenant ID, using generated: {}", e.getMessage());
-        }
     }
 }

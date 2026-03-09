@@ -15,6 +15,7 @@ import io.fabric8.kubernetes.client.dsl.base.CustomResourceDefinitionContext;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Primary;
 import org.springframework.stereotype.Service;
 
@@ -32,6 +33,7 @@ import java.util.UUID;
  */
 @Service
 @Primary
+@ConditionalOnProperty(name = "k8s.provisioner.enabled", havingValue = "true", matchIfMissing = true)
 public class FlinkOrchestrationServiceImpl implements FlinkOrchestrationService {
 
     private static final Logger log = LoggerFactory.getLogger(FlinkOrchestrationServiceImpl.class);
