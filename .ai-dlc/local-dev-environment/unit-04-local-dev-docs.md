@@ -1,6 +1,9 @@
 ---
-status: pending
-depends_on: [unit-01-spring-local-profile, unit-02-docker-compose-stack, unit-03-kind-cluster-setup]
+status: completed
+depends_on:
+  - unit-01-spring-local-profile
+  - unit-02-docker-compose-stack
+  - unit-03-kind-cluster-setup
 branch: ai-dlc/local-dev-environment/04-local-dev-docs
 discipline: documentation
 workflow: ""
@@ -205,3 +208,4 @@ This unit does NOT:
 - `LOCAL_DEV.md` goes in the **project root** (same level as `pom.xml`), not in `docs/`
 - The mock JWT decoder in Mode 1 means `Authorization: Bearer dev-token` works as a curl test — this is intentional and should be mentioned as a convenience
 - Mode 2 documents `npm run dev` for the frontend (Vite dev server on port 5173) rather than the Docker nginx, since Mode 2 targets active frontend development
+
