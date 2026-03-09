@@ -112,4 +112,34 @@ public class GlobalExceptionHandler {
                 .contentType(MediaType.APPLICATION_PROBLEM_JSON)
                 .body(problem);
     }
+
+    @ExceptionHandler(PipelineNotFoundException.class)
+    public ResponseEntity<ProblemDetail> handlePipelineNotFoundException(PipelineNotFoundException ex) {
+        ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.NOT_FOUND, ex.getMessage());
+        problem.setType(URI.create("about:blank"));
+        problem.setTitle("Not Found");
+        return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                .contentType(MediaType.APPLICATION_PROBLEM_JSON)
+                .body(problem);
+    }
+
+    @ExceptionHandler(SqlValidationException.class)
+    public ResponseEntity<ProblemDetail> handleSqlValidationException(SqlValidationException ex) {
+        ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.BAD_REQUEST, ex.getMessage());
+        problem.setType(URI.create("about:blank"));
+        problem.setTitle("Bad Request");
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                .contentType(MediaType.APPLICATION_PROBLEM_JSON)
+                .body(problem);
+    }
+
+    @ExceptionHandler(SchemaRegistryException.class)
+    public ResponseEntity<ProblemDetail> handleSchemaRegistryException(SchemaRegistryException ex) {
+        ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.BAD_REQUEST, ex.getMessage());
+        problem.setType(URI.create("about:blank"));
+        problem.setTitle("Bad Request");
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                .contentType(MediaType.APPLICATION_PROBLEM_JSON)
+                .body(problem);
+    }
 }

@@ -122,6 +122,21 @@
             <artifactId>h2</artifactId>
             <scope>test</scope>
         </dependency>
+
+        <!-- JSQLParser for SQL validation -->
+        <dependency>
+            <groupId>net.sf.jsqlparser</groupId>
+            <artifactId>jsqlparser</artifactId>
+            <version>4.9</version>
+        </dependency>
+
+        <!-- WireMock for integration tests -->
+        <dependency>
+            <groupId>org.wiremock</groupId>
+            <artifactId>wiremock-standalone</artifactId>
+            <version>3.4.2</version>
+            <scope>test</scope>
+        </dependency>
     </dependencies>
 
     <build>
