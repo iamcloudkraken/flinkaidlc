@@ -3,6 +3,8 @@ package com.flinkaidlc.platform.pipeline;
 import com.flinkaidlc.platform.exception.SchemaRegistryException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.core.env.Environment;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.HttpClientErrorException;
@@ -12,12 +14,16 @@ import org.springframework.web.client.RestClient;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.time.Duration;
+import java.util.Arrays;
 import java.util.List;
 
 @Service
 public class SchemaRegistryValidationService {
 
     private static final Logger log = LoggerFactory.getLogger(SchemaRegistryValidationService.class);
+
+    @Autowired
+    private Environment environment;
 
     /**
      * Private/internal host patterns that must not be contacted (SSRF blocklist).
@@ -48,14 +54,28 @@ public class SchemaRegistryValidationService {
     }
 
     /**
+     * Returns true when SSRF protection should be enforced.
+     * Bypassed in the {@code local} Spring profile to allow Docker service hostnames
+     * (which resolve to 172.x private IP ranges on the Docker bridge network).
+     */
+    private boolean shouldCheckSsrf() {
+        return !Arrays.asList(environment.getActiveProfiles()).contains("local");
+    }
+
+    /**
      * Validates that a schema registry URL is reachable and contains the given Avro subject.
      *
      * @param schemaRegistryUrl the schema registry base URL
      * @param avroSubject       the Avro subject to look up
-     * @throws SchemaRegistryException if the URL is blocked, subject not found, or registry unreachable
+     * @throws SchemaRegistryException if the URL is blocked (unless local profile), subject not found,
+     *                                 or registry unreachable
      */
     public void validate(String schemaRegistryUrl, String avroSubject) {
-        checkForSsrf(schemaRegistryUrl);
+        if (shouldCheckSsrf()) {
+            checkForSsrf(schemaRegistryUrl);
+        } else {
+            log.debug("[local] Skipping SSRF check for schema registry URL: {}", schemaRegistryUrl);
+        }
 
         String url = schemaRegistryUrl.replaceAll("/+$", "")
                 + "/subjects/" + avroSubject + "/versions/latest";
