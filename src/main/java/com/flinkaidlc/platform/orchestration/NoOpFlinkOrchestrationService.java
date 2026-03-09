@@ -3,13 +3,13 @@ package com.flinkaidlc.platform.orchestration;
 import com.flinkaidlc.platform.domain.Pipeline;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Service;
 
 import java.util.UUID;
 
 @Service
-@ConditionalOnMissingBean(FlinkOrchestrationService.class)
+@ConditionalOnProperty(name = "k8s.provisioner.enabled", havingValue = "false")
 public class NoOpFlinkOrchestrationService implements FlinkOrchestrationService {
 
     private static final Logger log = LoggerFactory.getLogger(NoOpFlinkOrchestrationService.class);

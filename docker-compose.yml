@@ -27,7 +27,7 @@ services:
     volumes:
       - ./docker/keycloak/realm-export.json:/opt/keycloak/data/import/realm-export.json:ro
     healthcheck:
-      test: ["CMD-SHELL", "curl -sf http://localhost:8080/realms/flink-platform/.well-known/openid-configuration || exit 1"]
+      test: ["CMD-SHELL", "bash -c 'exec 3<>/dev/tcp/localhost/8080 && printf \"GET /realms/flink-platform HTTP/1.0\\r\\nHost: localhost\\r\\n\\r\\n\" >&3 && read r <&3 && [[ \"$$r\" == *200* ]]'"]
       interval: 10s
       timeout: 5s
       retries: 15
@@ -113,14 +113,13 @@ services:
     build:
       context: frontend
       dockerfile: Dockerfile
+      args:
+        NGINX_CONF: nginx-local.conf
     ports:
       - "3000:80"
     depends_on:
       backend:
         condition: service_healthy
-    volumes:
-      # Override nginx config to proxy to backend:8090 (Docker Compose service name)
-      - ./docker/frontend/nginx-local.conf:/etc/nginx/conf.d/default.conf:ro
 
 volumes:
   postgres_data:
