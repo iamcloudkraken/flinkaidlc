@@ -8,7 +8,7 @@ import com.flinkaidlc.platform.exception.KubernetesConflictException;
 import com.flinkaidlc.platform.exception.TenantNotFoundException;
 import com.flinkaidlc.platform.exception.TenantProvisioningException;
 import com.flinkaidlc.platform.exception.SlugAlreadyInUseException;
-import com.flinkaidlc.platform.k8s.TenantNamespaceProvisioner;
+import com.flinkaidlc.platform.k8s.ITenantNamespaceProvisioner;
 import com.flinkaidlc.platform.oauth2.OAuth2ProviderClient;
 import com.flinkaidlc.platform.oauth2.OAuth2ProviderException;
 import com.flinkaidlc.platform.orchestration.FlinkOrchestrationService;
@@ -47,14 +47,14 @@ public class TenantService {
 
     private final TenantRepository tenantRepository;
     private final PipelineRepository pipelineRepository;
-    private final TenantNamespaceProvisioner provisioner;
+    private final ITenantNamespaceProvisioner provisioner;
     private final OAuth2ProviderClient oauth2Client;
     private final FlinkOrchestrationService orchestrationService;
 
     public TenantService(
         TenantRepository tenantRepository,
         PipelineRepository pipelineRepository,
-        TenantNamespaceProvisioner provisioner,
+        ITenantNamespaceProvisioner provisioner,
         OAuth2ProviderClient oauth2Client,
         FlinkOrchestrationService orchestrationService
     ) {

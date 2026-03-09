@@ -9,12 +9,14 @@ import io.fabric8.kubernetes.client.KubernetesClientException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
 import java.util.Map;
 
 /**
+ * Real Kubernetes implementation of {@link ITenantNamespaceProvisioner}.
  * Provisions and tears down the per-tenant Kubernetes namespace and associated RBAC/quota resources.
  *
  * <p>Resources created on onboarding (in order):
@@ -26,9 +28,12 @@ import java.util.Map;
  *   <li>ResourceQuota {@code tenant-quota} derived from tenant limits</li>
  *   <li>NetworkPolicy {@code tenant-isolation} denying cross-namespace ingress</li>
  * </ol>
+ *
+ * <p>Activate with {@code k8s.provisioner.enabled=true} (default when property is absent).
  */
 @Service
-public class TenantNamespaceProvisioner {
+@ConditionalOnProperty(name = "k8s.provisioner.enabled", havingValue = "true", matchIfMissing = true)
+public class TenantNamespaceProvisioner implements ITenantNamespaceProvisioner {
 
     private static final Logger log = LoggerFactory.getLogger(TenantNamespaceProvisioner.class);
 

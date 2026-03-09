@@ -4,7 +4,7 @@ import com.flinkaidlc.platform.AbstractIntegrationTest;
 import com.flinkaidlc.platform.config.TestSecurityConfig;
 import com.flinkaidlc.platform.domain.Tenant;
 import com.flinkaidlc.platform.domain.TenantStatus;
-import com.flinkaidlc.platform.k8s.TenantNamespaceProvisioner;
+import com.flinkaidlc.platform.k8s.ITenantNamespaceProvisioner;
 import com.flinkaidlc.platform.oauth2.OAuth2ProviderClient;
 import com.flinkaidlc.platform.oauth2.OAuth2ProviderException;
 import com.flinkaidlc.platform.repository.TenantRepository;
@@ -26,7 +26,7 @@ import static org.mockito.Mockito.*;
  * Integration tests for {@link TenantController}.
  *
  * <p>Uses Testcontainers PostgreSQL (from {@link AbstractIntegrationTest}),
- * with mocked {@link TenantNamespaceProvisioner} and {@link OAuth2ProviderClient}
+ * with mocked {@link ITenantNamespaceProvisioner} and {@link OAuth2ProviderClient}
  * to avoid needing a real K8s cluster or Keycloak.
  */
 class TenantControllerIntegrationTest extends AbstractIntegrationTest {
@@ -38,7 +38,7 @@ class TenantControllerIntegrationTest extends AbstractIntegrationTest {
     private TenantRepository tenantRepository;
 
     @MockBean
-    private TenantNamespaceProvisioner provisioner;
+    private ITenantNamespaceProvisioner provisioner;
 
     @MockBean
     private OAuth2ProviderClient oauth2Client;
