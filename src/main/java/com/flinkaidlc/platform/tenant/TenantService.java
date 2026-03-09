@@ -11,6 +11,7 @@ import com.flinkaidlc.platform.exception.SlugAlreadyInUseException;
 import com.flinkaidlc.platform.k8s.TenantNamespaceProvisioner;
 import com.flinkaidlc.platform.oauth2.OAuth2ProviderClient;
 import com.flinkaidlc.platform.oauth2.OAuth2ProviderException;
+import com.flinkaidlc.platform.orchestration.FlinkOrchestrationService;
 import com.flinkaidlc.platform.repository.PipelineRepository;
 import com.flinkaidlc.platform.repository.TenantRepository;
 import org.slf4j.Logger;
@@ -48,17 +49,20 @@ public class TenantService {
     private final PipelineRepository pipelineRepository;
     private final TenantNamespaceProvisioner provisioner;
     private final OAuth2ProviderClient oauth2Client;
+    private final FlinkOrchestrationService orchestrationService;
 
     public TenantService(
         TenantRepository tenantRepository,
         PipelineRepository pipelineRepository,
         TenantNamespaceProvisioner provisioner,
-        OAuth2ProviderClient oauth2Client
+        OAuth2ProviderClient oauth2Client,
+        FlinkOrchestrationService orchestrationService
     ) {
         this.tenantRepository = tenantRepository;
         this.pipelineRepository = pipelineRepository;
         this.provisioner = provisioner;
         this.oauth2Client = oauth2Client;
+        this.orchestrationService = orchestrationService;
     }
 
     /**
@@ -205,10 +209,15 @@ public class TenantService {
     }
 
     /**
-     * Stub for suspending all running pipelines belonging to a tenant.
-     * Will be fully implemented in unit-03 when PipelineService is introduced.
+     * Suspends all running pipelines for a tenant via the orchestration service.
+     * Called by {@link #deleteTenant} before namespace teardown.
      */
     public void suspendAll(UUID tenantId) {
-        log.warn("suspendAll called for tenantId={} — no-op stub (unit-03 will implement)", tenantId);
+        log.info("Suspending all pipelines for tenantId={}", tenantId);
+        try {
+            orchestrationService.suspendAll(tenantId);
+        } catch (Exception e) {
+            log.error("Failed to suspend all pipelines for tenantId={}: {}", tenantId, e.getMessage(), e);
+        }
     }
 }
