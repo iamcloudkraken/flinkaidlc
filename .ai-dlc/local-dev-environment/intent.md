@@ -6,7 +6,7 @@ git:
   auto_squash: false
 announcements: [changelog]
 created: 2026-03-08
-status: active
+status: complete
 epic: ""
 ---
 
