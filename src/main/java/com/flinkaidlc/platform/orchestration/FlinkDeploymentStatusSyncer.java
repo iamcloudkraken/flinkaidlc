@@ -10,7 +10,6 @@ import io.fabric8.kubernetes.api.model.GenericKubernetesResource;
 import io.fabric8.kubernetes.client.KubernetesClient;
 import io.fabric8.kubernetes.client.informers.ResourceEventHandler;
 import io.fabric8.kubernetes.client.informers.SharedIndexInformer;
-import io.fabric8.kubernetes.client.informers.SharedInformerFactory;
 import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
 import org.slf4j.Logger;
@@ -52,7 +51,6 @@ public class FlinkDeploymentStatusSyncer {
     @Value("${flink.sync.poll-interval-ms:30000}")
     private long pollIntervalMs;
 
-    private SharedInformerFactory informerFactory;
     private SharedIndexInformer<GenericKubernetesResource> informer;
 
     public FlinkDeploymentStatusSyncer(
@@ -68,34 +66,27 @@ public class FlinkDeploymentStatusSyncer {
     @PostConstruct
     public void startInformer() {
         try {
-            informerFactory = k8sClient.informers();
-            informer = informerFactory
-                .sharedIndexInformerForCustomResource(
-                    FLINK_API_GROUP + "/" + FLINK_API_VERSION_FULL.split("/")[1],
-                    FLINK_KIND_PLURAL,
-                    GenericKubernetesResource.class,
-                    // 0 resyncPeriod → no periodic full-sync from informer cache (we have the poller)
-                    0
-                );
+            // Fabric8 6.x: use genericKubernetesResources DSL — sharedIndexInformerForCustomResource removed
+            informer = k8sClient
+                .genericKubernetesResources(FLINK_API_VERSION_FULL, FLINK_KIND_PLURAL)
+                .inAnyNamespace()
+                .inform(new ResourceEventHandler<>() {
+                    @Override
+                    public void onAdd(GenericKubernetesResource resource) {
+                        // No-op on add — status is empty at this point
+                    }
 
-            informer.addEventHandler(new ResourceEventHandler<>() {
-                @Override
-                public void onAdd(GenericKubernetesResource resource) {
-                    // No-op on add — status is empty at this point
-                }
+                    @Override
+                    public void onUpdate(GenericKubernetesResource oldResource, GenericKubernetesResource newResource) {
+                        handleStatusUpdate(newResource);
+                    }
 
-                @Override
-                public void onUpdate(GenericKubernetesResource oldResource, GenericKubernetesResource newResource) {
-                    handleStatusUpdate(newResource);
-                }
+                    @Override
+                    public void onDelete(GenericKubernetesResource resource, boolean deletedFinalStateUnknown) {
+                        // Deletion handled by teardown() — no DB update needed here
+                    }
+                }, 0L);
 
-                @Override
-                public void onDelete(GenericKubernetesResource resource, boolean deletedFinalStateUnknown) {
-                    // Deletion handled by teardown() — no DB update needed here
-                }
-            });
-
-            informerFactory.startAllRegisteredInformers();
             log.info("FlinkDeployment informer started");
         } catch (Exception e) {
             log.warn("Failed to start FlinkDeployment informer (K8s may not be available in dev): {}", e.getMessage());
@@ -104,11 +95,11 @@ public class FlinkDeploymentStatusSyncer {
 
     @PreDestroy
     public void stopInformer() {
-        if (informerFactory != null) {
+        if (informer != null) {
             try {
-                informerFactory.stopAllRegisteredInformers();
+                informer.close();
             } catch (Exception e) {
-                log.warn("Error stopping informer factory: {}", e.getMessage());
+                log.warn("Error stopping FlinkDeployment informer: {}", e.getMessage());
             }
         }
     }
