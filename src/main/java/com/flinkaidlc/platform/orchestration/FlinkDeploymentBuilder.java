@@ -1,6 +1,9 @@
 package com.flinkaidlc.platform.orchestration;
 
 import com.flinkaidlc.platform.domain.Pipeline;
+import com.flinkaidlc.platform.domain.S3AuthType;
+import com.flinkaidlc.platform.domain.S3PipelineSink;
+import com.flinkaidlc.platform.domain.S3PipelineSource;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
@@ -79,6 +82,27 @@ public class FlinkDeploymentBuilder {
         flinkConfig.put("execution.checkpointing.interval", pipeline.getCheckpointIntervalMs() + "ms");
         flinkConfig.put("restart-strategy", "fixed-delay");
         flinkConfig.put("restart-strategy.fixed-delay.attempts", "3");
+
+        // Inject S3 credentials if any S3 source uses ACCESS_KEY auth
+        pipeline.getSources().stream()
+            .filter(s -> s instanceof S3PipelineSource)
+            .map(s -> (S3PipelineSource) s)
+            .filter(s -> s.getAuthType() == S3AuthType.ACCESS_KEY)
+            .findFirst()
+            .ifPresent(s -> {
+                flinkConfig.put("s3.access-key", s.getAccessKey());
+                flinkConfig.put("s3.secret-key", s.getSecretKey());
+            });
+        // Inject S3 credentials from sink if not already set from source
+        pipeline.getSinks().stream()
+            .filter(s -> s instanceof S3PipelineSink)
+            .map(s -> (S3PipelineSink) s)
+            .filter(s -> s.getAuthType() == S3AuthType.ACCESS_KEY)
+            .findFirst()
+            .ifPresent(s -> {
+                flinkConfig.putIfAbsent("s3.access-key", s.getAccessKey());
+                flinkConfig.putIfAbsent("s3.secret-key", s.getSecretKey());
+            });
 
         Map<String, Object> jobManagerResource = new HashMap<>();
         jobManagerResource.put("memory", "1024m");

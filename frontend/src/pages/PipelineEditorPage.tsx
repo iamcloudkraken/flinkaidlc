@@ -5,10 +5,12 @@ import {
   updatePipeline,
   getPipeline,
   type CreatePipelineRequest,
-  type KafkaSource,
-  type KafkaSink,
+  type PipelineSourceRequest,
+  type PipelineSinkRequest,
   type UpgradeMode,
   type StartupMode,
+  type S3AuthType,
+  type ColumnDefinition,
 } from '../api/pipelines';
 
 // Lazy-load Monaco editor to avoid blocking initial render
@@ -16,7 +18,60 @@ const SqlEditor = lazy(() => import('../components/SqlEditor'));
 
 const STEPS = ['Basic Info', 'Sources', 'Sinks', 'SQL Query', 'Review & Submit'];
 
-const defaultSource: KafkaSource = {
+const SQL_TYPES = ['STRING', 'BIGINT', 'INT', 'DOUBLE', 'FLOAT', 'BOOLEAN', 'TIMESTAMP(3)', 'DATE'];
+
+type KafkaSourceForm = {
+  type: 'KAFKA';
+  tableName: string;
+  topic: string;
+  bootstrapServers: string;
+  consumerGroup: string;
+  startupMode: StartupMode;
+  schemaRegistryUrl: string;
+  avroSubject: string;
+  watermarkDelayMs: number;
+};
+
+type S3SourceForm = {
+  type: 'S3';
+  tableName: string;
+  bucket: string;
+  prefix: string;
+  partitioned: boolean;
+  authType: S3AuthType;
+  accessKey: string;
+  secretKey: string;
+  columns: ColumnDefinition[];
+};
+
+type SourceForm = KafkaSourceForm | S3SourceForm;
+
+type KafkaSinkForm = {
+  type: 'KAFKA';
+  tableName: string;
+  topic: string;
+  bootstrapServers: string;
+  schemaRegistryUrl: string;
+  avroSubject: string;
+};
+
+type S3SinkForm = {
+  type: 'S3';
+  tableName: string;
+  bucket: string;
+  prefix: string;
+  partitioned: boolean;
+  authType: S3AuthType;
+  accessKey: string;
+  secretKey: string;
+  columns: ColumnDefinition[];
+  s3PartitionColumns: string[];
+};
+
+type SinkForm = KafkaSinkForm | S3SinkForm;
+
+const defaultKafkaSource: KafkaSourceForm = {
+  type: 'KAFKA',
   tableName: '',
   topic: '',
   bootstrapServers: 'kafka:9092',
@@ -27,12 +82,38 @@ const defaultSource: KafkaSource = {
   watermarkDelayMs: 5000,
 };
 
-const defaultSink: KafkaSink = {
+const defaultS3Source: S3SourceForm = {
+  type: 'S3',
+  tableName: '',
+  bucket: '',
+  prefix: '',
+  partitioned: false,
+  authType: 'IAM_ROLE',
+  accessKey: '',
+  secretKey: '',
+  columns: [],
+};
+
+const defaultKafkaSink: KafkaSinkForm = {
+  type: 'KAFKA',
   tableName: '',
   topic: '',
   bootstrapServers: 'kafka:9092',
   schemaRegistryUrl: '',
   avroSubject: '',
+};
+
+const defaultS3Sink: S3SinkForm = {
+  type: 'S3',
+  tableName: '',
+  bucket: '',
+  prefix: '',
+  partitioned: false,
+  authType: 'IAM_ROLE',
+  accessKey: '',
+  secretKey: '',
+  columns: [],
+  s3PartitionColumns: [],
 };
 
 interface FormState {
@@ -41,8 +122,8 @@ interface FormState {
   parallelism: number;
   checkpointIntervalMs: number;
   upgradeMode: UpgradeMode;
-  sources: KafkaSource[];
-  sinks: KafkaSink[];
+  sources: SourceForm[];
+  sinks: SinkForm[];
   sqlQuery: string;
 }
 
@@ -52,10 +133,114 @@ const initialForm: FormState = {
   parallelism: 2,
   checkpointIntervalMs: 30000,
   upgradeMode: 'SAVEPOINT',
-  sources: [{ ...defaultSource }],
-  sinks: [{ ...defaultSink }],
+  sources: [{ ...defaultKafkaSource }],
+  sinks: [{ ...defaultKafkaSink }],
   sqlQuery: '-- Write your Flink SQL query here\nINSERT INTO output\nSELECT *\nFROM input',
 };
+
+function toSourceRequest(s: SourceForm): PipelineSourceRequest {
+  if (s.type === 'S3') {
+    return {
+      type: 'S3',
+      tableName: s.tableName,
+      bucket: s.bucket,
+      prefix: s.prefix,
+      partitioned: s.partitioned,
+      authType: s.authType,
+      accessKey: s.accessKey || undefined,
+      secretKey: s.secretKey || undefined,
+      columns: s.columns,
+    };
+  }
+  return {
+    type: 'KAFKA',
+    tableName: s.tableName,
+    topic: s.topic,
+    bootstrapServers: s.bootstrapServers,
+    consumerGroup: s.consumerGroup,
+    startupMode: s.startupMode,
+    schemaRegistryUrl: s.schemaRegistryUrl || undefined,
+    avroSubject: s.avroSubject || undefined,
+    watermarkDelayMs: s.watermarkDelayMs,
+  };
+}
+
+function toSinkRequest(s: SinkForm): PipelineSinkRequest {
+  if (s.type === 'S3') {
+    return {
+      type: 'S3',
+      tableName: s.tableName,
+      bucket: s.bucket,
+      prefix: s.prefix,
+      partitioned: s.partitioned,
+      authType: s.authType,
+      accessKey: s.accessKey || undefined,
+      secretKey: s.secretKey || undefined,
+      columns: s.columns,
+      s3PartitionColumns: s.s3PartitionColumns,
+    };
+  }
+  return {
+    type: 'KAFKA',
+    tableName: s.tableName,
+    topic: s.topic,
+    bootstrapServers: s.bootstrapServers,
+    schemaRegistryUrl: s.schemaRegistryUrl || undefined,
+    avroSubject: s.avroSubject || undefined,
+  };
+}
+
+function fromApiSource(src: any): SourceForm {
+  if (src.sourceType === 'S3') {
+    return {
+      type: 'S3',
+      tableName: src.tableName ?? '',
+      bucket: src.bucket ?? '',
+      prefix: src.prefix ?? '',
+      partitioned: src.partitioned ?? false,
+      authType: src.authType ?? 'IAM_ROLE',
+      accessKey: src.accessKey ?? '',
+      secretKey: '',
+      columns: src.columns ?? [],
+    };
+  }
+  return {
+    type: 'KAFKA',
+    tableName: src.tableName ?? '',
+    topic: src.topic ?? '',
+    bootstrapServers: src.bootstrapServers ?? 'kafka:9092',
+    consumerGroup: src.consumerGroup ?? '',
+    startupMode: src.startupMode ?? 'GROUP_OFFSETS',
+    schemaRegistryUrl: src.schemaRegistryUrl ?? '',
+    avroSubject: src.avroSubject ?? '',
+    watermarkDelayMs: src.watermarkDelayMs ?? 5000,
+  };
+}
+
+function fromApiSink(snk: any): SinkForm {
+  if (snk.sinkType === 'S3') {
+    return {
+      type: 'S3',
+      tableName: snk.tableName ?? '',
+      bucket: snk.bucket ?? '',
+      prefix: snk.prefix ?? '',
+      partitioned: snk.partitioned ?? false,
+      authType: snk.authType ?? 'IAM_ROLE',
+      accessKey: snk.accessKey ?? '',
+      secretKey: '',
+      columns: snk.columns ?? [],
+      s3PartitionColumns: snk.s3PartitionColumns ?? [],
+    };
+  }
+  return {
+    type: 'KAFKA',
+    tableName: snk.tableName ?? '',
+    topic: snk.topic ?? '',
+    bootstrapServers: snk.bootstrapServers ?? 'kafka:9092',
+    schemaRegistryUrl: snk.schemaRegistryUrl ?? '',
+    avroSubject: snk.avroSubject ?? '',
+  };
+}
 
 export default function PipelineEditorPage() {
   const { id } = useParams<{ id: string }>();
@@ -78,8 +263,8 @@ export default function PipelineEditorPage() {
           parallelism: pipeline.parallelism,
           checkpointIntervalMs: pipeline.checkpointIntervalMs,
           upgradeMode: pipeline.upgradeMode,
-          sources: pipeline.sources,
-          sinks: pipeline.sinks,
+          sources: pipeline.sources.map(fromApiSource),
+          sinks: pipeline.sinks.map(fromApiSink),
           sqlQuery: pipeline.sqlQuery,
         });
       })
@@ -91,27 +276,135 @@ export default function PipelineEditorPage() {
     setForm((prev) => ({ ...prev, [field]: value }));
   };
 
-  const updateSource = (idx: number, updates: Partial<KafkaSource>) => {
+  const updateSource = (idx: number, updates: Partial<SourceForm>) => {
     setForm((prev) => ({
       ...prev,
-      sources: prev.sources.map((s, i) => (i === idx ? { ...s, ...updates } : s)),
+      sources: prev.sources.map((s, i) => (i === idx ? { ...s, ...updates } as SourceForm : s)),
     }));
   };
 
-  const updateSink = (idx: number, updates: Partial<KafkaSink>) => {
+  const updateSink = (idx: number, updates: Partial<SinkForm>) => {
     setForm((prev) => ({
       ...prev,
-      sinks: prev.sinks.map((s, i) => (i === idx ? { ...s, ...updates } : s)),
+      sinks: prev.sinks.map((s, i) => (i === idx ? { ...s, ...updates } as SinkForm : s)),
     }));
   };
 
-  const addSource = () => setForm((prev) => ({ ...prev, sources: [...prev.sources, { ...defaultSource }] }));
+  const updateSourceType = (idx: number, newType: 'KAFKA' | 'S3') => {
+    const tableName = form.sources[idx].tableName;
+    if (newType === 'KAFKA') {
+      setForm((prev) => ({
+        ...prev,
+        sources: prev.sources.map((src, i) => i === idx ? { ...defaultKafkaSource, tableName } : src),
+      }));
+    } else {
+      setForm((prev) => ({
+        ...prev,
+        sources: prev.sources.map((src, i) => i === idx ? { ...defaultS3Source, tableName } : src),
+      }));
+    }
+  };
+
+  const updateSinkType = (idx: number, newType: 'KAFKA' | 'S3') => {
+    const tableName = form.sinks[idx].tableName;
+    if (newType === 'KAFKA') {
+      setForm((prev) => ({
+        ...prev,
+        sinks: prev.sinks.map((snk, i) => i === idx ? { ...defaultKafkaSink, tableName } : snk),
+      }));
+    } else {
+      setForm((prev) => ({
+        ...prev,
+        sinks: prev.sinks.map((snk, i) => i === idx ? { ...defaultS3Sink, tableName } : snk),
+      }));
+    }
+  };
+
+  const addSource = () => setForm((prev) => ({ ...prev, sources: [...prev.sources, { ...defaultKafkaSource }] }));
   const removeSource = (idx: number) =>
     setForm((prev) => ({ ...prev, sources: prev.sources.filter((_, i) => i !== idx) }));
 
-  const addSink = () => setForm((prev) => ({ ...prev, sinks: [...prev.sinks, { ...defaultSink }] }));
+  const addSink = () => setForm((prev) => ({ ...prev, sinks: [...prev.sinks, { ...defaultKafkaSink }] }));
   const removeSink = (idx: number) =>
     setForm((prev) => ({ ...prev, sinks: prev.sinks.filter((_, i) => i !== idx) }));
+
+  const addSourceColumn = (idx: number) => {
+    const src = form.sources[idx];
+    if (src.type !== 'S3') return;
+    updateSource(idx, { columns: [...src.columns, { name: '', type: 'STRING' }] } as Partial<S3SourceForm>);
+  };
+
+  const updateSourceColumn = (srcIdx: number, colIdx: number, field: keyof ColumnDefinition, value: string) => {
+    const src = form.sources[srcIdx];
+    if (src.type !== 'S3') return;
+    const newCols = src.columns.map((c, i) => i === colIdx ? { ...c, [field]: value } : c);
+    updateSource(srcIdx, { columns: newCols } as Partial<S3SourceForm>);
+  };
+
+  const removeSourceColumn = (srcIdx: number, colIdx: number) => {
+    const src = form.sources[srcIdx];
+    if (src.type !== 'S3') return;
+    updateSource(srcIdx, { columns: src.columns.filter((_, i) => i !== colIdx) } as Partial<S3SourceForm>);
+  };
+
+  const addSinkColumn = (idx: number) => {
+    const snk = form.sinks[idx];
+    if (snk.type !== 'S3') return;
+    updateSink(idx, { columns: [...snk.columns, { name: '', type: 'STRING' }] } as Partial<S3SinkForm>);
+  };
+
+  const updateSinkColumn = (sinkIdx: number, colIdx: number, field: keyof ColumnDefinition, value: string) => {
+    const snk = form.sinks[sinkIdx];
+    if (snk.type !== 'S3') return;
+    const newCols = snk.columns.map((c, i) => i === colIdx ? { ...c, [field]: value } : c);
+    updateSink(sinkIdx, { columns: newCols } as Partial<S3SinkForm>);
+  };
+
+  const removeSinkColumn = (sinkIdx: number, colIdx: number) => {
+    const snk = form.sinks[sinkIdx];
+    if (snk.type !== 'S3') return;
+    updateSink(sinkIdx, { columns: snk.columns.filter((_, i) => i !== colIdx) } as Partial<S3SinkForm>);
+  };
+
+  const validateStep = (s: number): string | null => {
+    if (s === 1) {
+      for (const [idx, src] of form.sources.entries()) {
+        if (src.type === 'S3') {
+          if (!src.bucket.trim()) return `Source ${idx + 1}: S3 bucket is required.`;
+          if (!src.prefix.trim()) return `Source ${idx + 1}: S3 prefix is required.`;
+          if (src.columns.length === 0) return `Source ${idx + 1}: at least one column is required.`;
+          if (src.authType === 'ACCESS_KEY') {
+            if (!src.accessKey.trim()) return `Source ${idx + 1}: Access Key ID is required.`;
+            if (!src.secretKey.trim()) return `Source ${idx + 1}: Secret Access Key is required.`;
+          }
+        }
+      }
+    }
+    if (s === 2) {
+      for (const [idx, snk] of form.sinks.entries()) {
+        if (snk.type === 'S3') {
+          if (!snk.bucket.trim()) return `Sink ${idx + 1}: S3 bucket is required.`;
+          if (!snk.prefix.trim()) return `Sink ${idx + 1}: S3 prefix is required.`;
+          if (snk.columns.length === 0) return `Sink ${idx + 1}: at least one column is required.`;
+          if (snk.authType === 'ACCESS_KEY') {
+            if (!snk.accessKey.trim()) return `Sink ${idx + 1}: Access Key ID is required.`;
+            if (!snk.secretKey.trim()) return `Sink ${idx + 1}: Secret Access Key is required.`;
+          }
+        }
+      }
+    }
+    return null;
+  };
+
+  const handleNext = () => {
+    const validationError = validateStep(step);
+    if (validationError) {
+      setError(validationError);
+      return;
+    }
+    setError(null);
+    setStep((s) => Math.min(STEPS.length - 1, s + 1));
+  };
 
   const handleSubmit = async () => {
     setSubmitting(true);
@@ -123,8 +416,8 @@ export default function PipelineEditorPage() {
       checkpointIntervalMs: form.checkpointIntervalMs,
       upgradeMode: form.upgradeMode,
       sqlQuery: form.sqlQuery,
-      sources: form.sources,
-      sinks: form.sinks,
+      sources: form.sources.map(toSourceRequest),
+      sinks: form.sinks.map(toSinkRequest),
     };
 
     try {
@@ -260,31 +553,208 @@ export default function PipelineEditorPage() {
                   </button>
                 )}
               </div>
-              <div className="grid grid-cols-2 gap-3">
-                {(['tableName', 'topic', 'bootstrapServers', 'consumerGroup', 'schemaRegistryUrl', 'avroSubject'] as const).map((field) => (
-                  <div key={field}>
-                    <label className="block text-xs text-gray-600 mb-1">{field}</label>
-                    <input
-                      type="text"
-                      value={String(source[field] ?? '')}
-                      onChange={(e) => updateSource(idx, { [field]: e.target.value })}
-                      className="w-full border border-gray-300 rounded px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
-                    />
-                  </div>
-                ))}
-                <div>
-                  <label className="block text-xs text-gray-600 mb-1">startupMode</label>
-                  <select
-                    value={source.startupMode}
-                    onChange={(e) => updateSource(idx, { startupMode: e.target.value as StartupMode })}
-                    className="w-full border border-gray-300 rounded px-2 py-1 text-sm"
-                  >
-                    <option value="GROUP_OFFSETS">GROUP_OFFSETS</option>
-                    <option value="EARLIEST">EARLIEST</option>
-                    <option value="LATEST">LATEST</option>
-                  </select>
-                </div>
+
+              {/* Type toggle */}
+              <div className="flex gap-4 mb-4">
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="radio"
+                    name={`source-type-${idx}`}
+                    value="KAFKA"
+                    checked={source.type === 'KAFKA'}
+                    onChange={() => updateSourceType(idx, 'KAFKA')}
+                  />
+                  <span className="text-sm">Kafka (Avro)</span>
+                </label>
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="radio"
+                    name={`source-type-${idx}`}
+                    value="S3"
+                    checked={source.type === 'S3'}
+                    onChange={() => updateSourceType(idx, 'S3')}
+                  />
+                  <span className="text-sm">S3 (Parquet)</span>
+                </label>
               </div>
+
+              {/* Table name — always shown */}
+              <div>
+                <label className="block text-xs text-gray-600 mb-1">tableName</label>
+                <input
+                  type="text"
+                  value={source.tableName}
+                  onChange={(e) => updateSource(idx, { tableName: e.target.value })}
+                  className="w-full border border-gray-300 rounded px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
+                />
+              </div>
+
+              {source.type === 'KAFKA' && (
+                <div className="grid grid-cols-2 gap-3">
+                  {(['topic', 'bootstrapServers', 'consumerGroup', 'schemaRegistryUrl', 'avroSubject'] as const).map((field) => (
+                    <div key={field}>
+                      <label className="block text-xs text-gray-600 mb-1">{field}</label>
+                      <input
+                        type="text"
+                        value={String(source[field] ?? '')}
+                        onChange={(e) => updateSource(idx, { [field]: e.target.value })}
+                        className="w-full border border-gray-300 rounded px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
+                      />
+                    </div>
+                  ))}
+                  <div>
+                    <label className="block text-xs text-gray-600 mb-1">startupMode</label>
+                    <select
+                      value={source.startupMode}
+                      onChange={(e) => updateSource(idx, { startupMode: e.target.value as StartupMode })}
+                      className="w-full border border-gray-300 rounded px-2 py-1 text-sm"
+                    >
+                      <option value="GROUP_OFFSETS">GROUP_OFFSETS</option>
+                      <option value="EARLIEST">EARLIEST</option>
+                      <option value="LATEST">LATEST</option>
+                    </select>
+                  </div>
+                </div>
+              )}
+
+              {source.type === 'S3' && (
+                <div className="space-y-3">
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs text-gray-600 mb-1">S3 Bucket *</label>
+                      <input
+                        type="text"
+                        value={source.bucket}
+                        onChange={(e) => updateSource(idx, { bucket: e.target.value } as Partial<S3SourceForm>)}
+                        className="w-full border border-gray-300 rounded px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
+                        placeholder="my-bucket"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs text-gray-600 mb-1">S3 Prefix *</label>
+                      <input
+                        type="text"
+                        value={source.prefix}
+                        onChange={(e) => updateSource(idx, { prefix: e.target.value } as Partial<S3SourceForm>)}
+                        className="w-full border border-gray-300 rounded px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
+                        placeholder="data/events"
+                      />
+                    </div>
+                  </div>
+
+                  <label className="flex items-center gap-2 cursor-pointer text-sm">
+                    <input
+                      type="checkbox"
+                      checked={source.partitioned}
+                      onChange={(e) => updateSource(idx, { partitioned: e.target.checked } as Partial<S3SourceForm>)}
+                    />
+                    Hive-style partitioned paths
+                  </label>
+
+                  <div>
+                    <label className="block text-xs text-gray-600 mb-1">Authentication</label>
+                    <div className="flex gap-4">
+                      <label className="flex items-center gap-2 cursor-pointer text-sm">
+                        <input
+                          type="radio"
+                          name={`source-auth-${idx}`}
+                          value="IAM_ROLE"
+                          checked={source.authType === 'IAM_ROLE'}
+                          onChange={() => updateSource(idx, { authType: 'IAM_ROLE' } as Partial<S3SourceForm>)}
+                        />
+                        IAM Role
+                      </label>
+                      <label className="flex items-center gap-2 cursor-pointer text-sm">
+                        <input
+                          type="radio"
+                          name={`source-auth-${idx}`}
+                          value="ACCESS_KEY"
+                          checked={source.authType === 'ACCESS_KEY'}
+                          onChange={() => updateSource(idx, { authType: 'ACCESS_KEY' } as Partial<S3SourceForm>)}
+                        />
+                        Access Key
+                      </label>
+                    </div>
+                  </div>
+
+                  {source.authType === 'ACCESS_KEY' && (
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-xs text-gray-600 mb-1">Access Key ID *</label>
+                        <input
+                          type="text"
+                          value={source.accessKey}
+                          onChange={(e) => updateSource(idx, { accessKey: e.target.value } as Partial<S3SourceForm>)}
+                          className="w-full border border-gray-300 rounded px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs text-gray-600 mb-1">Secret Access Key *</label>
+                        <input
+                          type="password"
+                          value={source.secretKey}
+                          onChange={(e) => updateSource(idx, { secretKey: e.target.value } as Partial<S3SourceForm>)}
+                          className="w-full border border-gray-300 rounded px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
+                        />
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Columns editor */}
+                  <div>
+                    <label className="block text-xs text-gray-600 mb-2">Columns *</label>
+                    {source.columns.length > 0 && (
+                      <table className="w-full text-sm mb-2 border border-gray-200 rounded">
+                        <thead>
+                          <tr className="bg-gray-50">
+                            <th className="text-left px-2 py-1 text-xs text-gray-600">Column Name</th>
+                            <th className="text-left px-2 py-1 text-xs text-gray-600">SQL Type</th>
+                            <th className="px-2 py-1"></th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {source.columns.map((col, colIdx) => (
+                            <tr key={colIdx} className="border-t border-gray-100">
+                              <td className="px-2 py-1">
+                                <input
+                                  type="text"
+                                  value={col.name}
+                                  onChange={(e) => updateSourceColumn(idx, colIdx, 'name', e.target.value)}
+                                  className="w-full border border-gray-300 rounded px-1 py-0.5 text-xs focus:outline-none focus:ring-1 focus:ring-blue-500"
+                                  placeholder="column_name"
+                                />
+                              </td>
+                              <td className="px-2 py-1">
+                                <select
+                                  value={col.type}
+                                  onChange={(e) => updateSourceColumn(idx, colIdx, 'type', e.target.value)}
+                                  className="w-full border border-gray-300 rounded px-1 py-0.5 text-xs"
+                                >
+                                  {SQL_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
+                                </select>
+                              </td>
+                              <td className="px-2 py-1">
+                                <button
+                                  onClick={() => removeSourceColumn(idx, colIdx)}
+                                  className="text-red-500 text-xs hover:text-red-700"
+                                >
+                                  Remove
+                                </button>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    )}
+                    <button
+                      onClick={() => addSourceColumn(idx)}
+                      className="text-sm text-blue-600 hover:text-blue-800"
+                    >
+                      + Add Column
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           ))}
           <button
@@ -309,19 +779,236 @@ export default function PipelineEditorPage() {
                   </button>
                 )}
               </div>
-              <div className="grid grid-cols-2 gap-3">
-                {(['tableName', 'topic', 'bootstrapServers', 'schemaRegistryUrl', 'avroSubject'] as const).map((field) => (
-                  <div key={field}>
-                    <label className="block text-xs text-gray-600 mb-1">{field}</label>
-                    <input
-                      type="text"
-                      value={String(sink[field] ?? '')}
-                      onChange={(e) => updateSink(idx, { [field]: e.target.value })}
-                      className="w-full border border-gray-300 rounded px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
-                    />
-                  </div>
-                ))}
+
+              {/* Type toggle */}
+              <div className="flex gap-4 mb-4">
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="radio"
+                    name={`sink-type-${idx}`}
+                    value="KAFKA"
+                    checked={sink.type === 'KAFKA'}
+                    onChange={() => updateSinkType(idx, 'KAFKA')}
+                  />
+                  <span className="text-sm">Kafka (Avro)</span>
+                </label>
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="radio"
+                    name={`sink-type-${idx}`}
+                    value="S3"
+                    checked={sink.type === 'S3'}
+                    onChange={() => updateSinkType(idx, 'S3')}
+                  />
+                  <span className="text-sm">S3 (Parquet)</span>
+                </label>
               </div>
+
+              {/* Table name — always shown */}
+              <div>
+                <label className="block text-xs text-gray-600 mb-1">tableName</label>
+                <input
+                  type="text"
+                  value={sink.tableName}
+                  onChange={(e) => updateSink(idx, { tableName: e.target.value })}
+                  className="w-full border border-gray-300 rounded px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
+                />
+              </div>
+
+              {sink.type === 'KAFKA' && (
+                <div className="grid grid-cols-2 gap-3">
+                  {(['topic', 'bootstrapServers', 'schemaRegistryUrl', 'avroSubject'] as const).map((field) => (
+                    <div key={field}>
+                      <label className="block text-xs text-gray-600 mb-1">{field}</label>
+                      <input
+                        type="text"
+                        value={String(sink[field] ?? '')}
+                        onChange={(e) => updateSink(idx, { [field]: e.target.value })}
+                        className="w-full border border-gray-300 rounded px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
+                      />
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {sink.type === 'S3' && (
+                <div className="space-y-3">
+                  <div className="bg-blue-50 border border-blue-200 rounded px-3 py-2 text-xs text-blue-700">
+                    Files roll every 5 min or 128 MB
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs text-gray-600 mb-1">S3 Bucket *</label>
+                      <input
+                        type="text"
+                        value={sink.bucket}
+                        onChange={(e) => updateSink(idx, { bucket: e.target.value } as Partial<S3SinkForm>)}
+                        className="w-full border border-gray-300 rounded px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
+                        placeholder="my-bucket"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs text-gray-600 mb-1">S3 Prefix *</label>
+                      <input
+                        type="text"
+                        value={sink.prefix}
+                        onChange={(e) => updateSink(idx, { prefix: e.target.value } as Partial<S3SinkForm>)}
+                        className="w-full border border-gray-300 rounded px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
+                        placeholder="data/output"
+                      />
+                    </div>
+                  </div>
+
+                  <label className="flex items-center gap-2 cursor-pointer text-sm">
+                    <input
+                      type="checkbox"
+                      checked={sink.partitioned}
+                      onChange={(e) => updateSink(idx, { partitioned: e.target.checked } as Partial<S3SinkForm>)}
+                    />
+                    Hive-style partitioned paths
+                  </label>
+
+                  <div>
+                    <label className="block text-xs text-gray-600 mb-1">Authentication</label>
+                    <div className="flex gap-4">
+                      <label className="flex items-center gap-2 cursor-pointer text-sm">
+                        <input
+                          type="radio"
+                          name={`sink-auth-${idx}`}
+                          value="IAM_ROLE"
+                          checked={sink.authType === 'IAM_ROLE'}
+                          onChange={() => updateSink(idx, { authType: 'IAM_ROLE' } as Partial<S3SinkForm>)}
+                        />
+                        IAM Role
+                      </label>
+                      <label className="flex items-center gap-2 cursor-pointer text-sm">
+                        <input
+                          type="radio"
+                          name={`sink-auth-${idx}`}
+                          value="ACCESS_KEY"
+                          checked={sink.authType === 'ACCESS_KEY'}
+                          onChange={() => updateSink(idx, { authType: 'ACCESS_KEY' } as Partial<S3SinkForm>)}
+                        />
+                        Access Key
+                      </label>
+                    </div>
+                  </div>
+
+                  {sink.authType === 'ACCESS_KEY' && (
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-xs text-gray-600 mb-1">Access Key ID *</label>
+                        <input
+                          type="text"
+                          value={sink.accessKey}
+                          onChange={(e) => updateSink(idx, { accessKey: e.target.value } as Partial<S3SinkForm>)}
+                          className="w-full border border-gray-300 rounded px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs text-gray-600 mb-1">Secret Access Key *</label>
+                        <input
+                          type="password"
+                          value={sink.secretKey}
+                          onChange={(e) => updateSink(idx, { secretKey: e.target.value } as Partial<S3SinkForm>)}
+                          className="w-full border border-gray-300 rounded px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
+                        />
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Columns editor */}
+                  <div>
+                    <label className="block text-xs text-gray-600 mb-2">Columns *</label>
+                    {sink.columns.length > 0 && (
+                      <table className="w-full text-sm mb-2 border border-gray-200 rounded">
+                        <thead>
+                          <tr className="bg-gray-50">
+                            <th className="text-left px-2 py-1 text-xs text-gray-600">Column Name</th>
+                            <th className="text-left px-2 py-1 text-xs text-gray-600">SQL Type</th>
+                            <th className="px-2 py-1"></th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {sink.columns.map((col, colIdx) => (
+                            <tr key={colIdx} className="border-t border-gray-100">
+                              <td className="px-2 py-1">
+                                <input
+                                  type="text"
+                                  value={col.name}
+                                  onChange={(e) => updateSinkColumn(idx, colIdx, 'name', e.target.value)}
+                                  className="w-full border border-gray-300 rounded px-1 py-0.5 text-xs focus:outline-none focus:ring-1 focus:ring-blue-500"
+                                  placeholder="column_name"
+                                />
+                              </td>
+                              <td className="px-2 py-1">
+                                <select
+                                  value={col.type}
+                                  onChange={(e) => updateSinkColumn(idx, colIdx, 'type', e.target.value)}
+                                  className="w-full border border-gray-300 rounded px-1 py-0.5 text-xs"
+                                >
+                                  {SQL_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
+                                </select>
+                              </td>
+                              <td className="px-2 py-1">
+                                <button
+                                  onClick={() => removeSinkColumn(idx, colIdx)}
+                                  className="text-red-500 text-xs hover:text-red-700"
+                                >
+                                  Remove
+                                </button>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    )}
+                    <button
+                      onClick={() => addSinkColumn(idx)}
+                      className="text-sm text-blue-600 hover:text-blue-800"
+                    >
+                      + Add Column
+                    </button>
+                  </div>
+
+                  {/* Partition output */}
+                  <div>
+                    <label className="flex items-center gap-2 cursor-pointer text-sm mb-2">
+                      <input
+                        type="checkbox"
+                        checked={sink.s3PartitionColumns.length > 0}
+                        onChange={(e) => {
+                          if (!e.target.checked) {
+                            updateSink(idx, { s3PartitionColumns: [] } as Partial<S3SinkForm>);
+                          }
+                        }}
+                      />
+                      Partition output by column(s)
+                    </label>
+                    {sink.columns.length > 0 && (
+                      <div className="flex flex-wrap gap-2">
+                        {sink.columns.filter((c) => c.name).map((col) => (
+                          <label key={col.name} className="flex items-center gap-1 cursor-pointer text-xs">
+                            <input
+                              type="checkbox"
+                              checked={sink.s3PartitionColumns.includes(col.name)}
+                              onChange={(e) => {
+                                const current = sink.s3PartitionColumns;
+                                const updated = e.target.checked
+                                  ? [...current, col.name]
+                                  : current.filter((c) => c !== col.name);
+                                updateSink(idx, { s3PartitionColumns: updated } as Partial<S3SinkForm>);
+                              }}
+                            />
+                            {col.name}
+                          </label>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
           ))}
           <button
@@ -382,7 +1069,7 @@ export default function PipelineEditorPage() {
         </button>
         {step < STEPS.length - 1 ? (
           <button
-            onClick={() => setStep((s) => Math.min(STEPS.length - 1, s + 1))}
+            onClick={handleNext}
             className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700"
           >
             Next
