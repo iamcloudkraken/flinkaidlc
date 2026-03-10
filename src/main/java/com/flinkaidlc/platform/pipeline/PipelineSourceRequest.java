@@ -1,22 +1,13 @@
 package com.flinkaidlc.platform.pipeline;
 
-import com.flinkaidlc.platform.domain.StartupMode;
-import jakarta.validation.constraints.NotBlank;
+import com.fasterxml.jackson.annotation.JsonSubTypes;
+import com.fasterxml.jackson.annotation.JsonTypeInfo;
 
-public record PipelineSourceRequest(
-        @NotBlank String tableName,
-        @NotBlank String topic,
-        @NotBlank String bootstrapServers,
-        @NotBlank String consumerGroup,
-        StartupMode startupMode,
-        @NotBlank String schemaRegistryUrl,
-        @NotBlank String avroSubject,
-        String watermarkColumn,
-        long watermarkDelayMs
-) {
-    public PipelineSourceRequest {
-        if (startupMode == null) {
-            startupMode = StartupMode.GROUP_OFFSETS;
-        }
-    }
+@JsonTypeInfo(use = JsonTypeInfo.Id.NAME, property = "type", defaultImpl = KafkaSourceRequest.class)
+@JsonSubTypes({
+    @JsonSubTypes.Type(value = KafkaSourceRequest.class, name = "KAFKA"),
+    @JsonSubTypes.Type(value = S3SourceRequest.class, name = "S3")
+})
+public sealed interface PipelineSourceRequest permits KafkaSourceRequest, S3SourceRequest {
+    String tableName();
 }

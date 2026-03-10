@@ -33,8 +33,8 @@ class FlinkSqlGeneratorTest {
     @Test
     void generate_withWatermark_includesWatermarkClause() {
         Pipeline pipeline = buildPipeline("SELECT * FROM input");
-        pipeline.getSources().get(0).setWatermarkColumn("event_time");
-        pipeline.getSources().get(0).setWatermarkDelayMs(5000L);
+        ((KafkaPipelineSource) pipeline.getSources().get(0)).setWatermarkColumn("event_time");
+        ((KafkaPipelineSource) pipeline.getSources().get(0)).setWatermarkDelayMs(5000L);
 
         String sql = generator.generate(pipeline);
 
@@ -45,7 +45,7 @@ class FlinkSqlGeneratorTest {
     @Test
     void generate_withoutWatermark_noWatermarkClause() {
         Pipeline pipeline = buildPipeline("SELECT * FROM input");
-        pipeline.getSources().get(0).setWatermarkColumn(null);
+        ((KafkaPipelineSource) pipeline.getSources().get(0)).setWatermarkColumn(null);
 
         String sql = generator.generate(pipeline);
 
@@ -58,7 +58,7 @@ class FlinkSqlGeneratorTest {
         pipeline.getSources().get(0).setTableName("src1");
         pipeline.getSinks().get(0).setTableName("sink1");
 
-        PipelineSource src2 = new PipelineSource();
+        KafkaPipelineSource src2 = new KafkaPipelineSource();
         src2.setTableName("src2");
         src2.setTopic("t2");
         src2.setBootstrapServers("kafka:9092");
@@ -78,7 +78,7 @@ class FlinkSqlGeneratorTest {
     @Test
     void generate_singleQuoteInValue_isEscaped() {
         Pipeline pipeline = buildPipeline("SELECT * FROM input");
-        pipeline.getSources().get(0).setTopic("my'topic");
+        ((KafkaPipelineSource) pipeline.getSources().get(0)).setTopic("my'topic");
 
         String sql = generator.generate(pipeline);
 
@@ -105,7 +105,7 @@ class FlinkSqlGeneratorTest {
         pipeline.setCheckpointIntervalMs(30000L);
         pipeline.setUpgradeMode(UpgradeMode.SAVEPOINT);
 
-        PipelineSource source = new PipelineSource();
+        KafkaPipelineSource source = new KafkaPipelineSource();
         source.setTableName("input");
         source.setTopic("t1");
         source.setBootstrapServers("kafka:9092");
@@ -115,7 +115,7 @@ class FlinkSqlGeneratorTest {
         source.setAvroSubject("input-value");
         pipeline.addSource(source);
 
-        PipelineSink sink = new PipelineSink();
+        KafkaPipelineSink sink = new KafkaPipelineSink();
         sink.setTableName("output");
         sink.setTopic("t-out");
         sink.setBootstrapServers("kafka:9092");

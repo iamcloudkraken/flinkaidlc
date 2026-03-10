@@ -6,6 +6,8 @@ import {
   resumePipeline,
   deletePipeline,
   type Pipeline,
+  type PipelineSourceConfig,
+  type PipelineSinkConfig,
 } from '../api/pipelines';
 
 const STATUS_COLORS: Record<string, string> = {
@@ -16,6 +18,83 @@ const STATUS_COLORS: Record<string, string> = {
   DRAFT: 'bg-gray-100 text-gray-800',
   DELETED: 'bg-gray-100 text-gray-400',
 };
+
+function SourceCard({ source }: { source: PipelineSourceConfig }) {
+  if (source.sourceType === 'S3') {
+    return (
+      <div className="border border-gray-100 rounded p-3 text-sm">
+        <div className="flex items-center gap-2 mb-1">
+          <span className="inline-block bg-orange-100 text-orange-800 text-xs font-medium px-2 py-0.5 rounded">S3</span>
+          <span className="font-medium">{source.tableName}</span>
+        </div>
+        <div className="text-gray-600">Bucket: {source.bucket}</div>
+        <div className="text-gray-600">Prefix: {source.prefix}</div>
+        <div className="text-gray-600">Auth: {source.authType === 'ACCESS_KEY' ? 'Access Key' : 'IAM Role'}</div>
+        <div className="text-gray-600">Partitioned: {source.partitioned ? 'Yes' : 'No'}</div>
+        {source.columns && source.columns.length > 0 && (
+          <div className="text-gray-600">
+            Columns: {source.columns.map((c) => `${c.name} ${c.type}`).join(', ')}
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // Default: Kafka display (handles missing sourceType gracefully)
+  return (
+    <div className="border border-gray-100 rounded p-3 text-sm">
+      <div className="flex items-center gap-2 mb-1">
+        <span className="inline-block bg-blue-100 text-blue-800 text-xs font-medium px-2 py-0.5 rounded">Kafka</span>
+        <span className="font-medium">{source.tableName}</span>
+      </div>
+      <div className="text-gray-600">Topic: {source.topic}</div>
+      <div className="text-gray-600">Bootstrap Servers: {source.bootstrapServers}</div>
+      {source.schemaRegistryUrl && (
+        <div className="text-gray-600">Schema Registry: {source.schemaRegistryUrl}</div>
+      )}
+    </div>
+  );
+}
+
+function SinkCard({ sink }: { sink: PipelineSinkConfig }) {
+  if (sink.sinkType === 'S3') {
+    return (
+      <div className="border border-gray-100 rounded p-3 text-sm">
+        <div className="flex items-center gap-2 mb-1">
+          <span className="inline-block bg-orange-100 text-orange-800 text-xs font-medium px-2 py-0.5 rounded">S3</span>
+          <span className="font-medium">{sink.tableName}</span>
+        </div>
+        <div className="text-gray-600">Bucket: {sink.bucket}</div>
+        <div className="text-gray-600">Prefix: {sink.prefix}</div>
+        <div className="text-gray-600">Auth: {sink.authType === 'ACCESS_KEY' ? 'Access Key' : 'IAM Role'}</div>
+        <div className="text-gray-600">Partitioned: {sink.partitioned ? 'Yes' : 'No'}</div>
+        {sink.columns && sink.columns.length > 0 && (
+          <div className="text-gray-600">
+            Columns: {sink.columns.map((c) => `${c.name} ${c.type}`).join(', ')}
+          </div>
+        )}
+        {sink.s3PartitionColumns && sink.s3PartitionColumns.length > 0 && (
+          <div className="text-gray-600">
+            Partition by: {sink.s3PartitionColumns.join(', ')}
+          </div>
+        )}
+        <div className="text-gray-500 text-xs mt-1">Roll: 5 min / 128 MB</div>
+      </div>
+    );
+  }
+
+  // Default: Kafka display (handles missing sinkType gracefully)
+  return (
+    <div className="border border-gray-100 rounded p-3 text-sm">
+      <div className="flex items-center gap-2 mb-1">
+        <span className="inline-block bg-blue-100 text-blue-800 text-xs font-medium px-2 py-0.5 rounded">Kafka</span>
+        <span className="font-medium">{sink.tableName}</span>
+      </div>
+      <div className="text-gray-600">Topic: {sink.topic}</div>
+      <div className="text-gray-600">Bootstrap Servers: {sink.bootstrapServers}</div>
+    </div>
+  );
+}
 
 export default function PipelineDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -193,14 +272,7 @@ export default function PipelineDetailPage() {
         ) : (
           <div className="space-y-3">
             {pipeline.sources.map((source, idx) => (
-              <div key={idx} className="border border-gray-100 rounded p-3 text-sm">
-                <div className="font-medium">{source.tableName}</div>
-                <div className="text-gray-600">Topic: {source.topic}</div>
-                <div className="text-gray-600">Bootstrap Servers: {source.bootstrapServers}</div>
-                {source.schemaRegistryUrl && (
-                  <div className="text-gray-600">Schema Registry: {source.schemaRegistryUrl}</div>
-                )}
-              </div>
+              <SourceCard key={idx} source={source} />
             ))}
           </div>
         )}
@@ -214,11 +286,7 @@ export default function PipelineDetailPage() {
         ) : (
           <div className="space-y-3">
             {pipeline.sinks.map((sink, idx) => (
-              <div key={idx} className="border border-gray-100 rounded p-3 text-sm">
-                <div className="font-medium">{sink.tableName}</div>
-                <div className="text-gray-600">Topic: {sink.topic}</div>
-                <div className="text-gray-600">Bootstrap Servers: {sink.bootstrapServers}</div>
-              </div>
+              <SinkCard key={idx} sink={sink} />
             ))}
           </div>
         )}
