@@ -28,8 +28,8 @@ export default function LoginPage() {
   const from = state?.from?.pathname ?? '/dashboard';
 
   const [tenantId, setTenantId] = useState('');
-  const [clientId, setClientId] = useState('');
-  const [clientSecret, setClientSecret] = useState('');
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -44,22 +44,22 @@ export default function LoginPage() {
     e.preventDefault();
     setError(null);
 
-    if (!tenantId.trim() || !clientId.trim() || !clientSecret.trim()) {
+    if (!tenantId.trim() || !username.trim() || !password.trim()) {
       setError('All fields are required.');
       return;
     }
 
     setLoading(true);
     try {
-      // Replace with real token endpoint
       const tokenEndpoint =
         import.meta.env.VITE_TOKEN_ENDPOINT ??
-        '/realms/flink/protocol/openid-connect/token';
+        '/realms/flink-platform/protocol/openid-connect/token';
 
       const params = new URLSearchParams({
-        grant_type: 'client_credentials',
-        client_id: clientId,
-        client_secret: clientSecret,
+        grant_type: 'password',
+        client_id: import.meta.env.VITE_KEYCLOAK_CLIENT_ID ?? 'flink-platform-ui',
+        username: username.trim(),
+        password: password,
         scope: 'openid',
       });
 
@@ -127,34 +127,34 @@ export default function LoginPage() {
 
           <div className="mb-4">
             <label
-              htmlFor="clientId"
+              htmlFor="username"
               className="block text-sm font-medium text-gray-700 mb-1"
             >
-              Client ID (FID)
+              Email
             </label>
             <input
-              id="clientId"
-              type="text"
+              id="username"
+              type="email"
               autoComplete="username"
-              value={clientId}
-              onChange={(e) => setClientId(e.target.value)}
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
               className="w-full border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
             />
           </div>
 
           <div className="mb-6">
             <label
-              htmlFor="clientSecret"
+              htmlFor="password"
               className="block text-sm font-medium text-gray-700 mb-1"
             >
-              Client Secret
+              Password
             </label>
             <input
-              id="clientSecret"
+              id="password"
               type="password"
               autoComplete="current-password"
-              value={clientSecret}
-              onChange={(e) => setClientSecret(e.target.value)}
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
               className="w-full border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
             />
           </div>

@@ -2,10 +2,12 @@ import {
   createContext,
   useCallback,
   useContext,
+  useEffect,
   useMemo,
   useState,
   type ReactNode,
 } from 'react';
+import { setAuthToken, setUnauthorizedHandler } from '../api/axios';
 
 export interface AuthContextType {
   token: string | null;
@@ -27,15 +29,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [token, setToken] = useState<string | null>(null);
   const [tenantId, setTenantId] = useState<string | null>(null);
 
-  const login = useCallback((newToken: string, newTenantId: string) => {
-    setToken(newToken);
-    setTenantId(newTenantId);
-  }, []);
-
   const logout = useCallback(() => {
     setToken(null);
     setTenantId(null);
+    setAuthToken(null);
   }, []);
+
+  const login = useCallback((newToken: string, newTenantId: string) => {
+    setToken(newToken);
+    setTenantId(newTenantId);
+    setAuthToken(newToken);
+  }, []);
+
+  // Register the logout handler with axios once on mount.
+  useEffect(() => {
+    setUnauthorizedHandler(logout);
+  }, [logout]);
 
   const value = useMemo<AuthContextType>(
     () => ({

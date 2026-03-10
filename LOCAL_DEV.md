@@ -43,11 +43,13 @@ This builds the Spring Boot JAR (`mvn package -DskipTests`) then starts all cont
 
 | Service | URL | Credentials |
 |---------|-----|-------------|
-| Frontend UI | http://localhost:3000 | dev@local.dev / dev123 |
-| Backend API | http://localhost:8090/api/v1 | Any Bearer token |
-| Keycloak admin | http://localhost:8080 | admin / admin |
-| Schema Registry | http://localhost:8082 | — |
-| PostgreSQL | localhost:5432 | flinkplatform / flinkplatform |
+| Frontend UI | http://localhost:3100 | dev@local.dev / dev123 |
+| Backend API | http://localhost:8191/api/v1 | Any Bearer token |
+| Keycloak admin | http://localhost:8180 | admin / admin |
+| Schema Registry | http://localhost:8182 | — |
+| PostgreSQL | localhost:5433 | flinkplatform / flinkplatform |
+
+> **Note:** Ports are offset to avoid conflicts with a co-running `local-dev-environment` stack (which occupies 3000, 8090, 8080, 8082, 5432).
 
 > **Tip:** The backend accepts **any Bearer token** in local mode (mock JWT decoder). Use `Authorization: Bearer dev-token` for curl commands — no real token needed.
 
@@ -61,15 +63,15 @@ On first `make up`, the backend automatically creates:
 
 ```bash
 # Check backend health
-curl http://localhost:8090/actuator/health
+curl http://localhost:8191/actuator/health
 
 # Get demo tenant (any bearer token works)
 curl -H "Authorization: Bearer dev-token" \
-  http://localhost:8090/api/v1/tenants/00000000-0000-0000-0000-000000000001
+  http://localhost:8191/api/v1/tenants/00000000-0000-0000-0000-000000000001
 
 # List pipelines
 curl -H "Authorization: Bearer dev-token" \
-  http://localhost:8090/api/v1/pipelines
+  http://localhost:8191/api/v1/pipelines
 ```
 
 ### Useful commands
@@ -196,8 +198,8 @@ Ensure postgres is running:
   docker compose ps postgres
   # Should show "healthy"
 
-Check port 5432 is not in use by another process:
-  lsof -i :5432
+Check port 5433 is not in use by another process:
+  lsof -i :5433
 ```
 
 ### Backend fails to start: JWT configuration error
@@ -208,7 +210,7 @@ The local profile provides a mock JWT decoder that bypasses Keycloak.
 
 If running with Mode 2 and you want real Keycloak JWTs:
   Ensure keycloak is running (docker compose up -d keycloak) and
-  SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUER_URI=http://localhost:8080/realms/flink-platform
+  SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUER_URI=http://localhost:8180/realms/flink-platform
 ```
 
 ### "SSRF protection" error when creating a pipeline with schema-registry URL
@@ -233,21 +235,21 @@ Check MinIO is accessible:
   curl http://localhost:9000/minio/health/live
 ```
 
-### Port 8080 conflict (Keycloak)
+### Port conflicts with other stacks
 
-Keycloak runs on port 8080. If another service uses that port, change it in `docker-compose.yml`:
+The `docker-compose.yml` uses offset ports to avoid conflicts with a co-running `local-dev-environment` stack:
 
-```yaml
-keycloak:
-  ports:
-    - "8180:8080"  # Expose on 8180 instead
-```
+| Service | Host Port |
+|---------|-----------|
+| Frontend | 3100 |
+| Backend | 8191 |
+| Keycloak | 8180 |
+| Schema Registry | 8182 |
+| PostgreSQL | 5433 |
+| Kafka | 9192 |
+| Zookeeper | 2182 |
 
-Then update the backend environment variable:
-```yaml
-SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUER_URI: http://keycloak:8080/realms/flink-platform
-```
-(The internal Docker URL stays the same — only the host port changes.)
+Internal Docker network URLs are unchanged (e.g. `http://keycloak:8080`, `jdbc:postgresql://postgres:5432`).
 
 ### `make up` fails: `target/*.jar not found`
 

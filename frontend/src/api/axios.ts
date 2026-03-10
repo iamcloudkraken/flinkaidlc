@@ -13,26 +13,25 @@ const apiClient = axios.create({
 });
 
 /**
- * Token injector — set by configureAxiosAuth() called from AuthProvider.
- * Using a module-level ref avoids circular imports while keeping the token
- * out of localStorage (it stays in React state).
+ * Module-level auth state — set synchronously by setAuthToken() called from
+ * AuthContext login/logout. Keeping the token here (not in localStorage) prevents
+ * XSS theft via storage APIs.
  */
-let getToken: (() => string | null) | null = null;
+let authToken: string | null = null;
 let onUnauthorized: (() => void) | null = null;
 
-export function configureAxiosAuth(
-  tokenGetter: () => string | null,
-  unauthorizedHandler: () => void,
-) {
-  getToken = tokenGetter;
-  onUnauthorized = unauthorizedHandler;
+export function setAuthToken(token: string | null): void {
+  authToken = token;
+}
+
+export function setUnauthorizedHandler(handler: () => void): void {
+  onUnauthorized = handler;
 }
 
 // Request interceptor: attach Bearer token when available
 apiClient.interceptors.request.use((config) => {
-  const token = getToken?.();
-  if (token) {
-    config.headers.Authorization = `Bearer ${token}`;
+  if (authToken) {
+    config.headers.set('Authorization', `Bearer ${authToken}`);
   }
   return config;
 });
