@@ -275,6 +275,72 @@ class PipelineControllerIntegrationTest extends AbstractIntegrationTest {
         verify(orchestrationService).resume(any());
     }
 
+    @Test
+    void createPipeline_withS3Source_returns201() {
+        String request = """
+            {
+              "name": "S3 Pipeline",
+              "description": "Test S3",
+              "sqlQuery": "INSERT INTO s3_output SELECT id, name FROM s3_input",
+              "parallelism": 1,
+              "checkpointIntervalMs": 30000,
+              "upgradeMode": "STATELESS",
+              "sources": [{
+                "type": "S3",
+                "tableName": "s3_input",
+                "bucket": "test-bucket",
+                "prefix": "data/input",
+                "partitioned": false,
+                "authType": "IAM_ROLE",
+                "columns": [
+                  {"name": "id", "type": "BIGINT"},
+                  {"name": "name", "type": "STRING"}
+                ]
+              }],
+              "sinks": [{
+                "type": "S3",
+                "tableName": "s3_output",
+                "bucket": "test-bucket",
+                "prefix": "data/output",
+                "partitioned": false,
+                "authType": "IAM_ROLE",
+                "columns": [
+                  {"name": "id", "type": "BIGINT"},
+                  {"name": "name", "type": "STRING"}
+                ],
+                "s3PartitionColumns": []
+              }]
+            }
+            """;
+
+        // Create the pipeline
+        ResponseEntity<PipelineResponse> createResponse = restTemplate.exchange(
+            "/api/v1/pipelines",
+            HttpMethod.POST,
+            authRequest(request),
+            PipelineResponse.class
+        );
+
+        assertThat(createResponse.getStatusCode()).isEqualTo(HttpStatus.CREATED);
+        PipelineResponse created = createResponse.getBody();
+        assertThat(created).isNotNull();
+        UUID pipelineId = created.pipelineId();
+
+        // Fetch the pipeline detail to verify S3 sources were persisted
+        ResponseEntity<String> detailResponse = restTemplate.exchange(
+            "/api/v1/pipelines/" + pipelineId,
+            HttpMethod.GET,
+            authRequest(null),
+            String.class
+        );
+
+        assertThat(detailResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
+        String body = detailResponse.getBody();
+        assertThat(body).isNotNull();
+        assertThat(body).contains("\"sourceType\":\"S3\"");
+        assertThat(body).contains("\"bucket\":\"test-bucket\"");
+    }
+
     // ---- helpers ----
 
     private HttpEntity<?> authRequest(String body) {

@@ -17,6 +17,7 @@ import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -78,12 +79,16 @@ public class PipelineService {
         ).collect(Collectors.toList());
         sqlValidationService.validate(request.sqlQuery(), allTableNames);
 
-        // 5. Validate each source and sink schema registry
+        // 5. Validate each Kafka source and sink schema registry (skip for S3)
         for (PipelineSourceRequest source : request.sources()) {
-            schemaRegistryValidationService.validate(source.schemaRegistryUrl(), source.avroSubject());
+            if (source instanceof KafkaSourceRequest kafka) {
+                schemaRegistryValidationService.validate(kafka.schemaRegistryUrl(), kafka.avroSubject());
+            }
         }
         for (PipelineSinkRequest sink : request.sinks()) {
-            schemaRegistryValidationService.validate(sink.schemaRegistryUrl(), sink.avroSubject());
+            if (sink instanceof KafkaSinkRequest kafka) {
+                schemaRegistryValidationService.validate(kafka.schemaRegistryUrl(), kafka.avroSubject());
+            }
         }
 
         // 6. Persist Pipeline (status=DRAFT)
@@ -98,27 +103,12 @@ public class PipelineService {
         pipeline.setStatus(PipelineStatus.DRAFT);
 
         for (PipelineSourceRequest sourceReq : request.sources()) {
-            PipelineSource source = new PipelineSource();
-            source.setTableName(sourceReq.tableName());
-            source.setTopic(sourceReq.topic());
-            source.setBootstrapServers(sourceReq.bootstrapServers());
-            source.setConsumerGroup(sourceReq.consumerGroup());
-            source.setStartupMode(sourceReq.startupMode() != null ? sourceReq.startupMode() : StartupMode.GROUP_OFFSETS);
-            source.setSchemaRegistryUrl(sourceReq.schemaRegistryUrl());
-            source.setAvroSubject(sourceReq.avroSubject());
-            source.setWatermarkColumn(sourceReq.watermarkColumn());
-            source.setWatermarkDelayMs(sourceReq.watermarkDelayMs());
+            PipelineSource source = buildSourceEntity(sourceReq);
             pipeline.addSource(source);
         }
 
         for (PipelineSinkRequest sinkReq : request.sinks()) {
-            PipelineSink sink = new PipelineSink();
-            sink.setTableName(sinkReq.tableName());
-            sink.setTopic(sinkReq.topic());
-            sink.setBootstrapServers(sinkReq.bootstrapServers());
-            sink.setSchemaRegistryUrl(sinkReq.schemaRegistryUrl());
-            sink.setAvroSubject(sinkReq.avroSubject());
-            sink.setDeliveryGuarantee(sinkReq.deliveryGuarantee() != null ? sinkReq.deliveryGuarantee() : DeliveryGuarantee.AT_LEAST_ONCE);
+            PipelineSink sink = buildSinkEntity(sinkReq);
             pipeline.addSink(sink);
         }
 
@@ -186,12 +176,16 @@ public class PipelineService {
         ).collect(Collectors.toList());
         sqlValidationService.validate(request.sqlQuery(), allTableNames);
 
-        // Validate schema registry entries
+        // Validate schema registry entries (only Kafka)
         for (PipelineSourceRequest source : request.sources()) {
-            schemaRegistryValidationService.validate(source.schemaRegistryUrl(), source.avroSubject());
+            if (source instanceof KafkaSourceRequest kafka) {
+                schemaRegistryValidationService.validate(kafka.schemaRegistryUrl(), kafka.avroSubject());
+            }
         }
         for (PipelineSinkRequest sink : request.sinks()) {
-            schemaRegistryValidationService.validate(sink.schemaRegistryUrl(), sink.avroSubject());
+            if (sink instanceof KafkaSinkRequest kafka) {
+                schemaRegistryValidationService.validate(kafka.schemaRegistryUrl(), kafka.avroSubject());
+            }
         }
 
         pipeline.setName(request.name());
@@ -204,27 +198,12 @@ public class PipelineService {
         // Replace sources and sinks
         pipeline.getSources().clear();
         for (PipelineSourceRequest sourceReq : request.sources()) {
-            PipelineSource source = new PipelineSource();
-            source.setTableName(sourceReq.tableName());
-            source.setTopic(sourceReq.topic());
-            source.setBootstrapServers(sourceReq.bootstrapServers());
-            source.setConsumerGroup(sourceReq.consumerGroup());
-            source.setStartupMode(sourceReq.startupMode() != null ? sourceReq.startupMode() : StartupMode.GROUP_OFFSETS);
-            source.setSchemaRegistryUrl(sourceReq.schemaRegistryUrl());
-            source.setAvroSubject(sourceReq.avroSubject());
-            source.setWatermarkColumn(sourceReq.watermarkColumn());
-            source.setWatermarkDelayMs(sourceReq.watermarkDelayMs());
+            PipelineSource source = buildSourceEntity(sourceReq);
             pipeline.addSource(source);
         }
         pipeline.getSinks().clear();
         for (PipelineSinkRequest sinkReq : request.sinks()) {
-            PipelineSink sink = new PipelineSink();
-            sink.setTableName(sinkReq.tableName());
-            sink.setTopic(sinkReq.topic());
-            sink.setBootstrapServers(sinkReq.bootstrapServers());
-            sink.setSchemaRegistryUrl(sinkReq.schemaRegistryUrl());
-            sink.setAvroSubject(sinkReq.avroSubject());
-            sink.setDeliveryGuarantee(sinkReq.deliveryGuarantee() != null ? sinkReq.deliveryGuarantee() : DeliveryGuarantee.AT_LEAST_ONCE);
+            PipelineSink sink = buildSinkEntity(sinkReq);
             pipeline.addSink(sink);
         }
 
@@ -299,5 +278,65 @@ public class PipelineService {
 
     public void suspendAll(UUID tenantId) {
         orchestrationService.suspendAll(tenantId);
+    }
+
+    // --- Private helpers ---
+
+    private PipelineSource buildSourceEntity(PipelineSourceRequest sourceReq) {
+        return switch (sourceReq) {
+            case KafkaSourceRequest kafka -> {
+                KafkaPipelineSource s = new KafkaPipelineSource();
+                s.setTableName(kafka.tableName());
+                s.setTopic(kafka.topic());
+                s.setBootstrapServers(kafka.bootstrapServers());
+                s.setConsumerGroup(kafka.consumerGroup());
+                s.setStartupMode(kafka.startupMode() != null ? kafka.startupMode() : StartupMode.GROUP_OFFSETS);
+                s.setSchemaRegistryUrl(kafka.schemaRegistryUrl());
+                s.setAvroSubject(kafka.avroSubject());
+                s.setWatermarkColumn(kafka.watermarkColumn());
+                s.setWatermarkDelayMs(kafka.watermarkDelayMs());
+                yield s;
+            }
+            case S3SourceRequest s3 -> {
+                S3PipelineSource s = new S3PipelineSource();
+                s.setTableName(s3.tableName());
+                s.setBucket(s3.bucket());
+                s.setPrefix(s3.prefix());
+                s.setPartitioned(s3.partitioned());
+                s.setAuthType(s3.authType());
+                s.setAccessKey(s3.accessKey());
+                s.setSecretKey(s3.secretKey());
+                s.setColumns(s3.columns() != null ? s3.columns() : new ArrayList<>());
+                yield s;
+            }
+        };
+    }
+
+    private PipelineSink buildSinkEntity(PipelineSinkRequest sinkReq) {
+        return switch (sinkReq) {
+            case KafkaSinkRequest kafka -> {
+                KafkaPipelineSink s = new KafkaPipelineSink();
+                s.setTableName(kafka.tableName());
+                s.setTopic(kafka.topic());
+                s.setBootstrapServers(kafka.bootstrapServers());
+                s.setSchemaRegistryUrl(kafka.schemaRegistryUrl());
+                s.setAvroSubject(kafka.avroSubject());
+                s.setDeliveryGuarantee(kafka.deliveryGuarantee() != null ? kafka.deliveryGuarantee() : DeliveryGuarantee.AT_LEAST_ONCE);
+                yield s;
+            }
+            case S3SinkRequest s3 -> {
+                S3PipelineSink s = new S3PipelineSink();
+                s.setTableName(s3.tableName());
+                s.setBucket(s3.bucket());
+                s.setPrefix(s3.prefix());
+                s.setPartitioned(s3.partitioned());
+                s.setAuthType(s3.authType());
+                s.setAccessKey(s3.accessKey());
+                s.setSecretKey(s3.secretKey());
+                s.setColumns(s3.columns() != null ? s3.columns() : new ArrayList<>());
+                s.setS3PartitionColumns(s3.s3PartitionColumns() != null ? s3.s3PartitionColumns() : new ArrayList<>());
+                yield s;
+            }
+        };
     }
 }

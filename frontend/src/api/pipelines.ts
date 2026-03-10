@@ -16,7 +16,16 @@ export type StartupMode =
   | 'GROUP_OFFSETS'
   | 'TIMESTAMP';
 
+export type S3AuthType = 'IAM_ROLE' | 'ACCESS_KEY';
+
+export interface ColumnDefinition {
+  name: string;
+  type: string;
+}
+
 export interface KafkaSource {
+  sourceType: 'KAFKA';
+  sourceId: string;
   tableName: string;
   topic: string;
   bootstrapServers: string;
@@ -29,12 +38,42 @@ export interface KafkaSource {
 }
 
 export interface KafkaSink {
+  sinkType: 'KAFKA';
+  sinkId: string;
   tableName: string;
   topic: string;
   bootstrapServers: string;
   schemaRegistryUrl?: string;
   avroSubject?: string;
 }
+
+export interface S3Source {
+  sourceType: 'S3';
+  sourceId: string;
+  tableName: string;
+  bucket: string;
+  prefix: string;
+  partitioned: boolean;
+  authType: S3AuthType;
+  accessKey?: string;
+  columns: ColumnDefinition[];
+}
+
+export interface S3Sink {
+  sinkType: 'S3';
+  sinkId: string;
+  tableName: string;
+  bucket: string;
+  prefix: string;
+  partitioned: boolean;
+  authType: S3AuthType;
+  accessKey?: string;
+  columns: ColumnDefinition[];
+  s3PartitionColumns: string[];
+}
+
+export type PipelineSourceConfig = KafkaSource | S3Source;
+export type PipelineSinkConfig = KafkaSink | S3Sink;
 
 export interface DeploymentInfo {
   jobId?: string;
@@ -53,8 +92,8 @@ export interface Pipeline {
   checkpointIntervalMs: number;
   upgradeMode: UpgradeMode;
   sqlQuery: string;
-  sources: KafkaSource[];
-  sinks: KafkaSink[];
+  sources: PipelineSourceConfig[];
+  sinks: PipelineSinkConfig[];
   deploymentInfo?: DeploymentInfo;
   createdAt: string;
   updatedAt: string;
@@ -76,6 +115,57 @@ export interface PipelinePage {
   size: number;
 }
 
+export interface KafkaSourceRequest {
+  type: 'KAFKA';
+  tableName: string;
+  topic: string;
+  bootstrapServers: string;
+  consumerGroup: string;
+  startupMode: StartupMode;
+  schemaRegistryUrl?: string;
+  avroSubject?: string;
+  watermarkColumn?: string;
+  watermarkDelayMs?: number;
+}
+
+export interface KafkaSinkRequest {
+  type: 'KAFKA';
+  tableName: string;
+  topic: string;
+  bootstrapServers: string;
+  schemaRegistryUrl?: string;
+  avroSubject?: string;
+  deliveryGuarantee?: string;
+}
+
+export interface S3SourceRequest {
+  type: 'S3';
+  tableName: string;
+  bucket: string;
+  prefix: string;
+  partitioned: boolean;
+  authType: S3AuthType;
+  accessKey?: string;
+  secretKey?: string;
+  columns: ColumnDefinition[];
+}
+
+export interface S3SinkRequest {
+  type: 'S3';
+  tableName: string;
+  bucket: string;
+  prefix: string;
+  partitioned: boolean;
+  authType: S3AuthType;
+  accessKey?: string;
+  secretKey?: string;
+  columns: ColumnDefinition[];
+  s3PartitionColumns: string[];
+}
+
+export type PipelineSourceRequest = KafkaSourceRequest | S3SourceRequest;
+export type PipelineSinkRequest = KafkaSinkRequest | S3SinkRequest;
+
 export interface CreatePipelineRequest {
   name: string;
   description?: string;
@@ -83,8 +173,8 @@ export interface CreatePipelineRequest {
   checkpointIntervalMs: number;
   upgradeMode: UpgradeMode;
   sqlQuery: string;
-  sources: KafkaSource[];
-  sinks: KafkaSink[];
+  sources: PipelineSourceRequest[];
+  sinks: PipelineSinkRequest[];
 }
 
 export type UpdatePipelineRequest = CreatePipelineRequest;

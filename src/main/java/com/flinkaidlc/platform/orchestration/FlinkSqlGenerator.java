@@ -1,23 +1,19 @@
 package com.flinkaidlc.platform.orchestration;
 
-import com.flinkaidlc.platform.domain.Pipeline;
-import com.flinkaidlc.platform.domain.PipelineSink;
-import com.flinkaidlc.platform.domain.PipelineSource;
+import com.flinkaidlc.platform.domain.*;
 import org.springframework.stereotype.Component;
+
+import java.util.List;
 
 /**
  * Generates Flink SQL {@code statements.sql} content from a {@link Pipeline} domain object.
  *
  * <p>The generated file contains:
  * <ol>
- *   <li>One {@code CREATE TABLE} DDL per source (with Kafka connector + Avro Confluent format)</li>
+ *   <li>One {@code CREATE TABLE} DDL per source (Kafka or S3/filesystem)</li>
  *   <li>One {@code CREATE TABLE} DDL per sink</li>
  *   <li>The client-supplied {@code sqlQuery} (passed through verbatim)</li>
  * </ol>
- *
- * <p><b>Schema columns (v1):</b> A flexible {@code BYTES}-typed data column is used.
- * Full Avro schema inference from Schema Registry (generating typed DDL columns) is a v2
- * enhancement and is explicitly out of scope for this unit.
  */
 @Component
 public class FlinkSqlGenerator {
@@ -33,12 +29,20 @@ public class FlinkSqlGenerator {
 
         // Source table DDLs
         for (PipelineSource source : pipeline.getSources()) {
-            sb.append(generateSourceDdl(source)).append("\n\n");
+            if (source instanceof KafkaPipelineSource kafka) {
+                sb.append(generateKafkaSourceDdl(kafka)).append("\n\n");
+            } else if (source instanceof S3PipelineSource s3) {
+                sb.append(generateS3SourceDdl(s3)).append("\n\n");
+            }
         }
 
         // Sink table DDLs
         for (PipelineSink sink : pipeline.getSinks()) {
-            sb.append(generateSinkDdl(sink)).append("\n\n");
+            if (sink instanceof KafkaPipelineSink kafka) {
+                sb.append(generateKafkaSinkDdl(kafka)).append("\n\n");
+            } else if (sink instanceof S3PipelineSink s3) {
+                sb.append(generateS3SinkDdl(s3)).append("\n\n");
+            }
         }
 
         // Client SQL
@@ -47,7 +51,7 @@ public class FlinkSqlGenerator {
         return sb.toString();
     }
 
-    private String generateSourceDdl(PipelineSource source) {
+    private String generateKafkaSourceDdl(KafkaPipelineSource source) {
         StringBuilder sb = new StringBuilder();
         sb.append("CREATE TABLE ").append(escape(source.getTableName())).append(" (\n");
         sb.append("  `data` BYTES");
@@ -74,7 +78,7 @@ public class FlinkSqlGenerator {
         return sb.toString();
     }
 
-    private String generateSinkDdl(PipelineSink sink) {
+    private String generateKafkaSinkDdl(KafkaPipelineSink sink) {
         StringBuilder sb = new StringBuilder();
         sb.append("CREATE TABLE ").append(escape(sink.getTableName())).append(" (\n");
         sb.append("  `data` BYTES\n");
@@ -90,10 +94,83 @@ public class FlinkSqlGenerator {
         return sb.toString();
     }
 
+    private String generateS3SourceDdl(S3PipelineSource source) {
+        String path = "s3a://" + escape(source.getBucket())
+                + (source.getPrefix() != null && !source.getPrefix().isBlank()
+                   ? "/" + escape(source.getPrefix())
+                   : "");
+
+        StringBuilder sb = new StringBuilder();
+        sb.append("CREATE TABLE ").append(escape(source.getTableName())).append(" (\n");
+
+        List<ColumnDefinition> columns = source.getColumns();
+        if (columns != null && !columns.isEmpty()) {
+            for (int i = 0; i < columns.size(); i++) {
+                ColumnDefinition col = columns.get(i);
+                sb.append("  `").append(escape(col.name())).append("` ").append(col.type());
+                if (i < columns.size() - 1) {
+                    sb.append(",");
+                }
+                sb.append("\n");
+            }
+        } else {
+            sb.append("  `data` BYTES\n");
+        }
+
+        sb.append(") WITH (\n");
+        sb.append("  'connector' = 'filesystem',\n");
+        sb.append("  'path' = '").append(path).append("',\n");
+        sb.append("  'format' = 'parquet',\n");
+        sb.append("  'source.path.regex-pattern' = '.*\\.parquet$'\n");
+        sb.append(");");
+        return sb.toString();
+    }
+
+    private String generateS3SinkDdl(S3PipelineSink sink) {
+        String path = "s3a://" + escape(sink.getBucket())
+                + (sink.getPrefix() != null && !sink.getPrefix().isBlank()
+                   ? "/" + escape(sink.getPrefix())
+                   : "");
+
+        StringBuilder sb = new StringBuilder();
+        sb.append("CREATE TABLE ").append(escape(sink.getTableName())).append(" (\n");
+
+        List<ColumnDefinition> columns = sink.getColumns();
+        if (columns != null && !columns.isEmpty()) {
+            for (int i = 0; i < columns.size(); i++) {
+                ColumnDefinition col = columns.get(i);
+                sb.append("  `").append(escape(col.name())).append("` ").append(col.type());
+                if (i < columns.size() - 1) {
+                    sb.append(",");
+                }
+                sb.append("\n");
+            }
+        } else {
+            sb.append("  `data` BYTES\n");
+        }
+
+        sb.append(")");
+
+        List<String> partitionColumns = sink.getS3PartitionColumns();
+        if (partitionColumns != null && !partitionColumns.isEmpty()) {
+            sb.append("\nPARTITIONED BY (");
+            sb.append(String.join(", ", partitionColumns.stream().map(c -> "`" + escape(c) + "`").toList()));
+            sb.append(")");
+        }
+
+        sb.append("\nWITH (\n");
+        sb.append("  'connector' = 'filesystem',\n");
+        sb.append("  'path' = '").append(path).append("',\n");
+        sb.append("  'format' = 'parquet',\n");
+        sb.append("  'sink.rolling-policy.file-size' = '128MB',\n");
+        sb.append("  'sink.rolling-policy.rollover-interval' = '5 min',\n");
+        sb.append("  'sink.rolling-policy.check-interval' = '1 min'\n");
+        sb.append(");");
+        return sb.toString();
+    }
+
     /**
      * Escapes single quotes in SQL string literals to prevent injection into generated SQL.
-     * Values are configuration strings from user input stored in domain objects; they must
-     * not break out of the single-quoted WITH clause values.
      */
     static String escape(String value) {
         if (value == null) return "";

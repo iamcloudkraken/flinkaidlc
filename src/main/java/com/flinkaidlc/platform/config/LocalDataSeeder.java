@@ -78,7 +78,7 @@ public class LocalDataSeeder {
         pipeline.setUpgradeMode(UpgradeMode.SAVEPOINT);
         pipeline.setStatus(PipelineStatus.DRAFT);
 
-        PipelineSource source = new PipelineSource();
+        KafkaPipelineSource source = new KafkaPipelineSource();
         source.setTableName("input");
         source.setTopic("demo-input");
         source.setBootstrapServers("kafka:29092");
@@ -89,7 +89,7 @@ public class LocalDataSeeder {
         source.setWatermarkDelayMs(5000L);
         pipeline.addSource(source);
 
-        PipelineSink sink = new PipelineSink();
+        KafkaPipelineSink sink = new KafkaPipelineSink();
         sink.setTableName("output");
         sink.setTopic("demo-output");
         sink.setBootstrapServers("kafka:29092");

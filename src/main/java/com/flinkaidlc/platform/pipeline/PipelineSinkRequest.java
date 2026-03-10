@@ -1,19 +1,13 @@
 package com.flinkaidlc.platform.pipeline;
 
-import com.flinkaidlc.platform.domain.DeliveryGuarantee;
-import jakarta.validation.constraints.NotBlank;
+import com.fasterxml.jackson.annotation.JsonSubTypes;
+import com.fasterxml.jackson.annotation.JsonTypeInfo;
 
-public record PipelineSinkRequest(
-        @NotBlank String tableName,
-        @NotBlank String topic,
-        @NotBlank String bootstrapServers,
-        @NotBlank String schemaRegistryUrl,
-        @NotBlank String avroSubject,
-        DeliveryGuarantee deliveryGuarantee
-) {
-    public PipelineSinkRequest {
-        if (deliveryGuarantee == null) {
-            deliveryGuarantee = DeliveryGuarantee.AT_LEAST_ONCE;
-        }
-    }
+@JsonTypeInfo(use = JsonTypeInfo.Id.NAME, property = "type", defaultImpl = KafkaSinkRequest.class)
+@JsonSubTypes({
+    @JsonSubTypes.Type(value = KafkaSinkRequest.class, name = "KAFKA"),
+    @JsonSubTypes.Type(value = S3SinkRequest.class, name = "S3")
+})
+public sealed interface PipelineSinkRequest permits KafkaSinkRequest, S3SinkRequest {
+    String tableName();
 }
