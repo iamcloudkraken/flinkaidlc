@@ -1,5 +1,6 @@
 package com.flinkaidlc.platform.domain;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -22,6 +23,7 @@ public class PipelineSource {
     @Column(name = "source_id", updatable = false, nullable = false)
     private UUID sourceId;
 
+    @JsonIgnore
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "pipeline_id", nullable = false)
     private Pipeline pipeline;

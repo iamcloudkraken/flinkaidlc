@@ -6,7 +6,7 @@ import {
   deletePipeline,
   suspendPipeline,
   resumePipeline,
-  type Pipeline,
+  type PipelineListItem,
   type PipelineStatus,
 } from '../api/pipelines';
 
@@ -55,7 +55,7 @@ export default function PipelineListPage() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ['pipelines'] }),
   });
 
-  function handleDelete(pipeline: Pipeline) {
+  function handleDelete(pipeline: PipelineListItem) {
     if (
       window.confirm(
         `Delete pipeline "${pipeline.name}"? This action cannot be undone.`,
@@ -92,7 +92,7 @@ export default function PipelineListPage() {
         </div>
       )}
 
-      {data && data.content.length === 0 && (
+      {data && data.items.length === 0 && (
         <div className="text-center py-12 text-gray-400">
           No pipelines yet.{' '}
           <Link to="/pipelines/new" className="text-indigo-600 hover:underline">
@@ -102,7 +102,7 @@ export default function PipelineListPage() {
         </div>
       )}
 
-      {data && data.content.length > 0 && (
+      {data && data.items.length > 0 && (
         <>
           <div className="bg-white shadow rounded-lg overflow-hidden">
             <table className="min-w-full divide-y divide-gray-200">
@@ -121,7 +121,7 @@ export default function PipelineListPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
-                {data.content.map((p) => (
+                {data.items.map((p) => (
                   <tr key={p.id} className="hover:bg-gray-50 transition-colors">
                     <td className="px-4 py-3 text-sm font-medium text-gray-800">
                       <Link
@@ -181,7 +181,7 @@ export default function PipelineListPage() {
           {/* Pagination */}
           <div className="mt-4 flex items-center justify-between text-sm text-gray-600">
             <span>
-              Page {data.number + 1} of {data.totalPages} ({data.totalElements}{' '}
+              Page {data.page + 1} of {Math.ceil(data.total / data.size)} ({data.total}{' '}
               total)
             </span>
             <div className="flex gap-2">
@@ -193,7 +193,7 @@ export default function PipelineListPage() {
                 Previous
               </button>
               <button
-                disabled={page >= data.totalPages - 1}
+                disabled={page >= Math.ceil(data.total / data.size) - 1}
                 onClick={() => setPage((p) => p + 1)}
                 className="px-3 py-1 border rounded disabled:opacity-40 hover:bg-gray-100 transition-colors"
               >

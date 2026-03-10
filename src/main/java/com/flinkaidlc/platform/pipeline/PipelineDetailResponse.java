@@ -3,6 +3,7 @@ package com.flinkaidlc.platform.pipeline;
 import com.flinkaidlc.platform.domain.*;
 
 import java.time.OffsetDateTime;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 
@@ -38,8 +39,8 @@ public record PipelineDetailResponse(
                 pipeline.getCheckpointIntervalMs(),
                 pipeline.getUpgradeMode(),
                 pipeline.getStatus(),
-                pipeline.getSources(),
-                pipeline.getSinks(),
+                new ArrayList<>(pipeline.getSources()),
+                new ArrayList<>(pipeline.getSinks()),
                 deployment != null ? deployment.getLifecycleState() : null,
                 deployment != null ? deployment.getJobState() : null,
                 deployment != null ? deployment.getLastSavepointPath() : null,

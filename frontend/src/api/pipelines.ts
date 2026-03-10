@@ -60,11 +60,19 @@ export interface Pipeline {
   updatedAt: string;
 }
 
+export interface PipelineListItem {
+  id: string;
+  name: string;
+  status: PipelineStatus;
+  parallelism: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface PipelinePage {
-  content: Pipeline[];
-  totalElements: number;
-  totalPages: number;
-  number: number;
+  items: PipelineListItem[];
+  total: number;
+  page: number;
   size: number;
 }
 
@@ -95,15 +103,48 @@ export async function listPipelines(
   page = 0,
   size = 20,
 ): Promise<PipelinePage> {
-  const { data } = await apiClient.get<PipelinePage>('/pipelines', {
+  const { data } = await apiClient.get<any>('/pipelines', {
     params: { page, size },
   });
-  return data;
+  return {
+    total: data.total,
+    page: data.page,
+    size: data.size,
+    items: (data.items ?? []).map((item: any) => ({
+      id: item.pipelineId,
+      name: item.name,
+      status: item.status,
+      parallelism: item.parallelism,
+      createdAt: item.createdAt,
+      updatedAt: item.updatedAt,
+    })),
+  };
 }
 
 export async function getPipeline(id: string): Promise<Pipeline> {
-  const { data } = await apiClient.get<Pipeline>(`/pipelines/${id}`);
-  return data;
+  const { data } = await apiClient.get<any>(`/pipelines/${id}`);
+  const hasDeploymentInfo =
+    data.lifecycleState || data.lastSavepointPath || data.errorMessage;
+  return {
+    id: data.pipelineId,
+    name: data.name,
+    description: data.description,
+    status: data.status,
+    parallelism: data.parallelism,
+    checkpointIntervalMs: data.checkpointIntervalMs,
+    upgradeMode: data.upgradeMode,
+    sqlQuery: data.sqlQuery,
+    sources: data.sources ?? [],
+    sinks: data.sinks ?? [],
+    deploymentInfo: hasDeploymentInfo
+      ? {
+          savepointPath: data.lastSavepointPath,
+          errorMessage: data.errorMessage,
+        }
+      : undefined,
+    createdAt: data.createdAt,
+    updatedAt: data.updatedAt,
+  };
 }
 
 export async function createPipeline(
