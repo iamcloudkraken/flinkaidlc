@@ -1,5 +1,5 @@
 ---
-status: in_progress
+status: completed
 depends_on: []
 branch: ai-dlc/s3-parquet-source-sink/01-s3-parquet-source-sink
 discipline: fullstack
