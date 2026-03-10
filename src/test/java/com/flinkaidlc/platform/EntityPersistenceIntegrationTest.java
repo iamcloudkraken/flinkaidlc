@@ -68,7 +68,7 @@ class EntityPersistenceIntegrationTest extends AbstractIntegrationTest {
         pipeline.setCheckpointIntervalMs(30000L);
         pipeline.setUpgradeMode(UpgradeMode.SAVEPOINT);
 
-        PipelineSource source = new PipelineSource();
+        KafkaPipelineSource source = new KafkaPipelineSource();
         source.setTableName("source_table");
         source.setTopic("input-topic");
         source.setBootstrapServers("kafka:9092");
@@ -78,7 +78,7 @@ class EntityPersistenceIntegrationTest extends AbstractIntegrationTest {
         source.setAvroSubject("input-topic-value");
         pipeline.addSource(source);
 
-        PipelineSink sink = new PipelineSink();
+        KafkaPipelineSink sink = new KafkaPipelineSink();
         sink.setTableName("sink_table");
         sink.setTopic("output-topic");
         sink.setBootstrapServers("kafka:9092");
@@ -96,8 +96,8 @@ class EntityPersistenceIntegrationTest extends AbstractIntegrationTest {
         assertThat(loaded.getName()).isEqualTo("Test Pipeline");
         assertThat(loaded.getSources()).hasSize(1);
         assertThat(loaded.getSinks()).hasSize(1);
-        assertThat(loaded.getSources().get(0).getTopic()).isEqualTo("input-topic");
-        assertThat(loaded.getSinks().get(0).getTopic()).isEqualTo("output-topic");
+        assertThat(((KafkaPipelineSource) loaded.getSources().get(0)).getTopic()).isEqualTo("input-topic");
+        assertThat(((KafkaPipelineSink) loaded.getSinks().get(0)).getTopic()).isEqualTo("output-topic");
     }
 
     @Test

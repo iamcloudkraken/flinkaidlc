@@ -120,7 +120,7 @@ class FlinkOrchestrationServiceImplTest {
     @Test
     void sqlGenerator_escapesSpecialCharsInConnectorValues() {
         Pipeline pipeline = buildPipeline();
-        pipeline.getSources().get(0).setTopic("my'special'topic");
+        ((KafkaPipelineSource) pipeline.getSources().get(0)).setTopic("my'special'topic");
 
         String sql = sqlGenerator.generate(pipeline);
         assertThat(sql).contains("my\\'special\\'topic");
@@ -145,7 +145,7 @@ class FlinkOrchestrationServiceImplTest {
         pipeline.setUpgradeMode(UpgradeMode.SAVEPOINT);
         pipeline.setStatus(PipelineStatus.DRAFT);
 
-        PipelineSource source = new PipelineSource();
+        KafkaPipelineSource source = new KafkaPipelineSource();
         source.setTableName("input");
         source.setTopic("t1");
         source.setBootstrapServers("kafka:9092");
@@ -155,7 +155,7 @@ class FlinkOrchestrationServiceImplTest {
         source.setAvroSubject("input-value");
         pipeline.addSource(source);
 
-        PipelineSink sink = new PipelineSink();
+        KafkaPipelineSink sink = new KafkaPipelineSink();
         sink.setTableName("output");
         sink.setTopic("t-out");
         sink.setBootstrapServers("kafka:9092");
