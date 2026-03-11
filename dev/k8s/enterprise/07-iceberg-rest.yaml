@@ -1,0 +1,68 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: iceberg-rest
+  namespace: ns-enterprise
+  labels:
+    app.kubernetes.io/part-of: flink-platform-enterprise
+    app.kubernetes.io/name: iceberg-rest
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: iceberg-rest
+  template:
+    metadata:
+      labels:
+        app: iceberg-rest
+        app.kubernetes.io/part-of: flink-platform-enterprise
+    spec:
+      initContainers:
+        - name: wait-for-minio
+          image: curlimages/curl:latest
+          imagePullPolicy: IfNotPresent
+          command:
+            - sh
+            - -c
+            - "until curl -sf http://minio.ns-enterprise.svc.cluster.local:9000/minio/health/live; do echo 'Waiting for MinIO...'; sleep 3; done; echo 'MinIO ready.'"
+      containers:
+        - name: iceberg-rest
+          image: tabulario/iceberg-rest:latest
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: CATALOG_WAREHOUSE
+              value: "s3://flink-local/iceberg"
+            - name: CATALOG_IO__IMPL
+              value: "org.apache.iceberg.aws.s3.S3FileIO"
+            - name: CATALOG_S3_ENDPOINT
+              value: "http://minio.ns-enterprise.svc.cluster.local:9000"
+            - name: CATALOG_S3_ACCESS__KEY__ID
+              value: "minioadmin"
+            - name: CATALOG_S3_SECRET__ACCESS__KEY
+              value: "minioadmin"
+            - name: CATALOG_S3_PATH__STYLE__ACCESS
+              value: "true"
+          ports:
+            - containerPort: 8181
+          resources:
+            limits:
+              memory: 256Mi
+              cpu: 250m
+            requests:
+              memory: 128Mi
+              cpu: 100m
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: iceberg-rest
+  namespace: ns-enterprise
+  labels:
+    app.kubernetes.io/part-of: flink-platform-enterprise
+spec:
+  selector:
+    app: iceberg-rest
+  ports:
+    - port: 8181
+      targetPort: 8181
+  type: ClusterIP

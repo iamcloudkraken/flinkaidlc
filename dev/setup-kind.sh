@@ -29,8 +29,12 @@ kubectl rollout status deployment/cert-manager-cainjector -n cert-manager --time
 kubectl rollout status deployment/cert-manager-webhook -n cert-manager --timeout=120s
 
 echo "==> Installing Flink Kubernetes Operator v${FLINK_OPERATOR_VERSION}..."
-helm repo add flink-operator-repo "https://downloads.apache.org/flink/flink-kubernetes-operator-${FLINK_OPERATOR_VERSION}/" 2>/dev/null || \
-  helm repo add flink-operator-repo "https://downloads.apache.org/flink/flink-kubernetes-operator-${FLINK_OPERATOR_VERSION}/"
+FLINK_DOWNLOADS_URL="https://downloads.apache.org/flink/flink-kubernetes-operator-${FLINK_OPERATOR_VERSION}/"
+FLINK_ARCHIVE_URL="https://archive.apache.org/dist/flink/flink-kubernetes-operator-${FLINK_OPERATOR_VERSION}/"
+if ! helm repo add flink-operator-repo "$FLINK_DOWNLOADS_URL" 2>/dev/null; then
+  helm repo remove flink-operator-repo 2>/dev/null || true
+  helm repo add flink-operator-repo "$FLINK_ARCHIVE_URL"
+fi
 helm repo update
 helm upgrade --install flink-kubernetes-operator flink-operator-repo/flink-kubernetes-operator \
   --namespace flink-operator \

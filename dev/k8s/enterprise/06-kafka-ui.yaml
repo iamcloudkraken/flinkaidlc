@@ -1,0 +1,58 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kafka-ui
+  namespace: ns-enterprise
+  labels:
+    app.kubernetes.io/part-of: flink-platform-enterprise
+    app.kubernetes.io/name: kafka-ui
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: kafka-ui
+  template:
+    metadata:
+      labels:
+        app: kafka-ui
+        app.kubernetes.io/part-of: flink-platform-enterprise
+    spec:
+      containers:
+        - name: kafka-ui
+          image: provectuslabs/kafka-ui:latest
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: KAFKA_CLUSTERS_0_NAME
+              value: "local"
+            - name: KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS
+              value: "kafka.ns-enterprise.svc.cluster.local:29092"
+            - name: KAFKA_CLUSTERS_0_SCHEMAREGISTRY
+              value: "http://schema-registry.ns-enterprise.svc.cluster.local:8081"
+            - name: SERVER_SERVLET_CONTEXT_PATH
+              value: "/kafka-ui"
+            - name: DYNAMIC_CONFIG_ENABLED
+              value: "true"
+          ports:
+            - containerPort: 8080
+          resources:
+            limits:
+              memory: 256Mi
+              cpu: 250m
+            requests:
+              memory: 128Mi
+              cpu: 100m
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: kafka-ui
+  namespace: ns-enterprise
+  labels:
+    app.kubernetes.io/part-of: flink-platform-enterprise
+spec:
+  selector:
+    app: kafka-ui
+  ports:
+    - port: 8080
+      targetPort: 8080
+  type: ClusterIP

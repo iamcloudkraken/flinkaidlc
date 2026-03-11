@@ -1,0 +1,153 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: keycloak-realm-import
+  namespace: ns-enterprise
+  labels:
+    app.kubernetes.io/part-of: flink-platform-enterprise
+data:
+  realm-export.json: |
+    {
+      "realm": "flink-platform",
+      "enabled": true,
+      "displayName": "Flink Platform",
+      "registrationAllowed": false,
+      "loginWithEmailAllowed": true,
+      "duplicateEmailsAllowed": false,
+      "resetPasswordAllowed": false,
+      "editUsernameAllowed": false,
+      "bruteForceProtected": false,
+      "clients": [
+        {
+          "clientId": "flink-platform-ui",
+          "name": "Flink Platform UI",
+          "enabled": true,
+          "publicClient": true,
+          "standardFlowEnabled": true,
+          "directAccessGrantsEnabled": true,
+          "rootUrl": "http://localhost:3000",
+          "baseUrl": "http://localhost:3000",
+          "redirectUris": ["http://localhost:3000/*", "http://localhost:5173/*"],
+          "webOrigins": ["http://localhost:3000", "http://localhost:5173"],
+          "protocol": "openid-connect",
+          "attributes": {
+            "post.logout.redirect.uris": "http://localhost:3000/*"
+          }
+        }
+      ],
+      "users": [
+        {
+          "username": "dev",
+          "email": "dev@local.dev",
+          "enabled": true,
+          "emailVerified": true,
+          "firstName": "Dev",
+          "lastName": "User",
+          "credentials": [
+            {
+              "type": "password",
+              "value": "dev123",
+              "temporary": false
+            }
+          ],
+          "attributes": {
+            "tenant_id": ["00000000-0000-0000-0000-000000000001"]
+          }
+        }
+      ],
+      "clientScopes": [
+        {
+          "name": "tenant",
+          "protocol": "openid-connect",
+          "attributes": {
+            "include.in.token.scope": "true"
+          },
+          "protocolMappers": [
+            {
+              "name": "tenant_id",
+              "protocol": "openid-connect",
+              "protocolMapper": "oidc-usermodel-attribute-mapper",
+              "consentRequired": false,
+              "config": {
+                "user.attribute": "tenant_id",
+                "id.token.claim": "true",
+                "access.token.claim": "true",
+                "claim.name": "tenant_id",
+                "jsonType.label": "String",
+                "userinfo.token.claim": "true"
+              }
+            }
+          ]
+        }
+      ],
+      "defaultDefaultClientScopes": ["roles", "profile", "email", "tenant"]
+    }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: keycloak
+  namespace: ns-enterprise
+  labels:
+    app.kubernetes.io/part-of: flink-platform-enterprise
+    app.kubernetes.io/name: keycloak
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: keycloak
+  template:
+    metadata:
+      labels:
+        app: keycloak
+        app.kubernetes.io/part-of: flink-platform-enterprise
+    spec:
+      containers:
+        - name: keycloak
+          image: quay.io/keycloak/keycloak:24.0
+          imagePullPolicy: IfNotPresent
+          args:
+            - start-dev
+            - --import-realm
+          env:
+            - name: KEYCLOAK_ADMIN
+              value: "admin"
+            - name: KEYCLOAK_ADMIN_PASSWORD
+              value: "admin"
+          ports:
+            - containerPort: 8080
+          volumeMounts:
+            - name: realm-import
+              mountPath: /opt/keycloak/data/import
+          startupProbe:
+            httpGet:
+              path: /realms/master
+              port: 8080
+            failureThreshold: 30
+            periodSeconds: 10
+          resources:
+            limits:
+              memory: 512Mi
+              cpu: 500m
+            requests:
+              memory: 256Mi
+              cpu: 250m
+      volumes:
+        - name: realm-import
+          configMap:
+            name: keycloak-realm-import
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: keycloak
+  namespace: ns-enterprise
+  labels:
+    app.kubernetes.io/part-of: flink-platform-enterprise
+spec:
+  selector:
+    app: keycloak
+  ports:
+    - port: 8080
+      targetPort: 8080
+  type: ClusterIP
