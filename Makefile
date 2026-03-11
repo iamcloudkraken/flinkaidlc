@@ -1,4 +1,4 @@
-.PHONY: up down logs build clean flink-ui infra
+.PHONY: up down logs build clean flink-ui infra k8s-setup k8s-build k8s-up k8s-down k8s-status
 
 ## Build the JAR then start all services
 up: build
@@ -36,16 +36,78 @@ clean:
 logs:
 	docker compose logs -f backend frontend
 
-## Port-forward Flink Web UI for the first FlinkDeployment found (requires kind cluster)
+## Open Flink UI for a pipeline (usage: make flink-ui TENANT=my-tenant PIPELINE=pipeline-id)
 flink-ui:
-	@PIPELINE=$$(kubectl get flinkdeployment --all-namespaces -o jsonpath='{.items[0].metadata.name}' 2>/dev/null); \
-	NS=$$(kubectl get flinkdeployment --all-namespaces -o jsonpath='{.items[0].metadata.namespace}' 2>/dev/null); \
-	if [ -z "$$PIPELINE" ]; then \
-		echo "No FlinkDeployment found. Deploy a pipeline first (requires kind cluster from dev/setup-kind.sh)."; \
+	@echo "Flink UI available at:"
+	@echo "  http://localhost:30080/flink/$(TENANT)/$(PIPELINE)/"
+	@echo ""
+	@echo "If running Docker Compose (make up), port-forward manually:"
+	@echo "  kubectl port-forward svc/pipeline-$(PIPELINE)-rest 8081:8081 -n tenant-$(TENANT)"
+
+# ── Kubernetes (Docker Desktop) ─────────────────────────────────────────────
+
+K8S_CONTEXT := $(shell kubectl config current-context 2>/dev/null)
+
+.PHONY: k8s-guard
+k8s-guard:
+	@if [ "$(K8S_CONTEXT)" != "docker-desktop" ]; then \
+		echo "ERROR: kubectl context is '$(K8S_CONTEXT)', expected 'docker-desktop'"; \
+		echo "Switch context: kubectl config use-context docker-desktop"; \
 		exit 1; \
-	fi; \
-	echo "Port-forwarding Flink UI for $$PIPELINE in $$NS to http://localhost:8081 ..."; \
-	kubectl port-forward "svc/$${PIPELINE}-rest" 8081:8081 -n "$$NS"
+	fi
+
+## Bootstrap cluster (run once): installs cert-manager + Flink Operator
+.PHONY: k8s-setup
+k8s-setup:
+	@bash dev/setup-k8s.sh
+
+## Build Docker images for K8s deployment (backend + frontend)
+.PHONY: k8s-build
+k8s-build:
+	@echo "Building backend image..."
+	docker build -f docker/backend/Dockerfile -t flinkaidlc-backend:latest .
+	@echo "Building frontend image..."
+	docker build -t flinkaidlc-frontend:latest ./frontend
+
+## Start all K8s services (builds images, applies manifests, waits for ready)
+.PHONY: k8s-up
+k8s-up: k8s-guard k8s-build
+	@echo "Applying enterprise namespace manifests..."
+	kubectl apply -f dev/k8s/enterprise/
+	@echo "Waiting for enterprise services to be ready..."
+	kubectl wait --for=condition=ready pod --all -n ns-enterprise --timeout=180s || kubectl get pods -n ns-enterprise
+	@echo "Applying controlplane namespace manifests..."
+	kubectl apply -f dev/k8s/controlplane/
+	@echo "Waiting for controlplane services to be ready..."
+	kubectl wait --for=condition=ready pod --all -n ns-controlplane --timeout=120s || kubectl get pods -n ns-controlplane
+	@echo ""
+	@echo "=== Platform is up! ==="
+	@echo "  Frontend:   http://localhost:30080"
+	@echo "  Kafka UI:   http://localhost:30080/kafka-ui/"
+	@echo "  Keycloak:   http://localhost:30080/realms/master"
+	@echo ""
+	@echo "Login: dev@local.dev / dev123"
+
+## Stop K8s services (deletes ns-enterprise and ns-controlplane, preserves tenant namespaces)
+.PHONY: k8s-down
+k8s-down: k8s-guard
+	@echo "Deleting ns-enterprise..."
+	kubectl delete namespace ns-enterprise --ignore-not-found
+	@echo "Deleting ns-controlplane..."
+	kubectl delete namespace ns-controlplane --ignore-not-found
+	@echo "Done. Tenant namespaces (tenant-*) preserved."
+
+## Show pod status across all platform namespaces
+.PHONY: k8s-status
+k8s-status:
+	@echo "=== ns-enterprise ==="
+	@kubectl get pods -n ns-enterprise 2>/dev/null || echo "(namespace not found)"
+	@echo ""
+	@echo "=== ns-controlplane ==="
+	@kubectl get pods -n ns-controlplane 2>/dev/null || echo "(namespace not found)"
+	@echo ""
+	@echo "=== Tenant namespaces ==="
+	@kubectl get pods -A -l app.kubernetes.io/managed-by=flink-platform 2>/dev/null || echo "(no tenant pods)"
 
 help:
 	@grep -E '^## ' $(MAKEFILE_LIST) | sed 's/## //'
