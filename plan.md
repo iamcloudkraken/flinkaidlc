@@ -1,207 +1,263 @@
-# Tactical Plan: unit-01-enterprise-namespace
+# Tactical Plan: unit-02-controlplane-namespace
 
 ## Key Findings from Repo Exploration
 
-- `docker-compose.yml` at root — source of truth for image versions and env vars
-- `docker/keycloak/realm-export.json` EXISTS — must be embedded as ConfigMap and mounted into Keycloak
-- `dev/` has no `k8s/` subdirectory yet — create from scratch
-- MinIO credentials from setup-kind.sh: minioadmin / minioadmin, bucket: flink-local
-- Kafka internal listener name in docker-compose: `PLAINTEXT_INTERNAL` (use this, not `PLAINTEXT_HOST`)
-- Kafka UI not in docker-compose — use `provectuslabs/kafka-ui:latest`
+- `frontend/nginx-local.conf` exists — Docker Compose Nginx config with /api/ and /realms/ routes. Base for K8s config (add /kafka-ui/ and /flink/).
+- `application.yml` uses env vars: `DATABASE_URL`, `KUBERNETES_PLATFORM_NAMESPACE` (default: `flink-platform`), `OAUTH2_ISSUER_URI`
+- `SPRING_DATASOURCE_URL` env var will override `spring.datasource.url` via Spring's relaxed binding (takes precedence over profile properties)
+- Unit-01's kafka-ui Deployment does NOT set `SERVER_SERVLET_CONTEXT_PATH=/kafka-ui` — Kafka UI assets may 404 when proxied via `/kafka-ui/` prefix. Builder must also fix `dev/k8s/enterprise/06-kafka-ui.yaml`.
+- nginx base image uses standard `include /etc/nginx/conf.d/*.conf` inside `http {}` — resolver directive before server{} is in http context (correct)
 
-## File Creation Order
+## File Structure
 
 ```
-dev/k8s/enterprise/
-├── 00-namespace.yaml
-├── 01-zookeeper.yaml
-├── 02-kafka.yaml
-├── 03-schema-registry.yaml
-├── 04-keycloak.yaml           (includes ConfigMap for realm-export.json)
-├── 05-minio.yaml
-├── 06-kafka-ui.yaml
-└── 07-iceberg-rest.yaml       (initContainer waits for MinIO health)
+dev/k8s/controlplane/
+├── namespace.yaml
+├── postgres.yaml              (Deployment + Service)
+├── backend.yaml               (ServiceAccount + ClusterRole + ClusterRoleBinding + Deployment + Service)
+├── frontend.yaml              (ConfigMap + Deployment + Service)
+└── nginx-flink-proxy.yaml     (ConfigMap + Deployment + Service)
 ```
 
-## Common Patterns (apply to ALL resources)
+## Common Patterns (ALL resources)
 
 ```yaml
-# All resources:
 metadata:
-  namespace: ns-enterprise
+  namespace: ns-controlplane
   labels:
-    app.kubernetes.io/part-of: flink-platform-enterprise
-    app.kubernetes.io/name: <service-name>
-
-# Deployments: spec.selector.matchLabels AND spec.template.metadata.labels:
-    app: <service-name>
-
-# Services: spec.selector:
-    app: <service-name>
-
-# All Deployments:
+    app.kubernetes.io/part-of: flink-platform-controlplane
+    app.kubernetes.io/name: <service>
+# Deployments: selector.matchLabels AND pod template labels:
+    app: <service>
 spec:
   replicas: 1
 ```
 
-## 00-namespace.yaml
+## namespace.yaml
 
 ```yaml
 apiVersion: v1
 kind: Namespace
 metadata:
-  name: ns-enterprise
+  name: ns-controlplane
   labels:
-    app.kubernetes.io/part-of: flink-platform-enterprise
+    app.kubernetes.io/part-of: flink-platform-controlplane
 ```
 
-## 01-zookeeper.yaml
+## postgres.yaml
 
 ```yaml
-image: confluentinc/cp-zookeeper:7.6.0
+# Deployment
+image: postgres:16-alpine
 imagePullPolicy: IfNotPresent
 env:
-  ZOOKEEPER_CLIENT_PORT: "2181"
-  ZOOKEEPER_TICK_TIME: "2000"
-containerPort: 2181
+  POSTGRES_DB: flinkplatform
+  POSTGRES_USER: flinkplatform
+  POSTGRES_PASSWORD: flinkplatform
+containerPort: 5432
+volumeMounts: [name: data, mountPath: /var/lib/postgresql/data]
+volumes: [name: data, emptyDir: {}]
 resources: limits {memory: 256Mi, cpu: 250m}, requests {memory: 128Mi, cpu: 100m}
-Service: name=zookeeper, ClusterIP, port 2181
+readinessProbe: exec [pg_isready, -U, flinkplatform], initialDelaySeconds: 5, periodSeconds: 5
+
+# Service
+name: postgresql  # CRITICAL: must be 'postgresql' not 'postgres'
+type: ClusterIP
+port: 5432
 ```
 
-## 02-kafka.yaml
+## backend.yaml (5 resources separated by ---)
 
+### ServiceAccount
 ```yaml
-image: confluentinc/cp-kafka:7.6.0
-imagePullPolicy: IfNotPresent
+name: backend
+namespace: ns-controlplane
+```
+
+### ClusterRole (cluster-scoped, no namespace)
+```yaml
+name: flink-platform-backend
+rules:
+- apiGroups: [""]
+  resources: ["namespaces", "serviceaccounts", "resourcequotas"]
+  verbs: ["get", "list", "create", "update", "patch", "delete"]
+- apiGroups: ["rbac.authorization.k8s.io"]
+  resources: ["roles", "rolebindings"]
+  verbs: ["get", "list", "create", "update", "patch", "delete"]
+- apiGroups: ["networking.k8s.io"]
+  resources: ["networkpolicies"]
+  verbs: ["get", "list", "create", "update", "patch", "delete"]
+- apiGroups: ["flink.apache.org"]
+  resources: ["flinkdeployments"]
+  verbs: ["get", "list", "create", "update", "patch", "delete"]
+```
+
+### ClusterRoleBinding (cluster-scoped, no namespace)
+```yaml
+name: flink-platform-backend
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: flink-platform-backend
+subjects:
+  - kind: ServiceAccount
+    name: backend
+    namespace: ns-controlplane
+```
+
+### Deployment
+```yaml
+name: backend
+namespace: ns-controlplane
+spec.template.spec.serviceAccountName: backend
+image: flinkaidlc-backend:latest
+imagePullPolicy: Never
+containerPort: 8090
 env:
-  KAFKA_BROKER_ID: "1"
-  KAFKA_ZOOKEEPER_CONNECT: "zookeeper.ns-enterprise.svc.cluster.local:2181"
-  KAFKA_ADVERTISED_LISTENERS: "PLAINTEXT_INTERNAL://kafka.ns-enterprise.svc.cluster.local:29092,PLAINTEXT://localhost:9092"
-  KAFKA_LISTENERS: "PLAINTEXT_INTERNAL://0.0.0.0:29092,PLAINTEXT://0.0.0.0:9092"
-  KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: "PLAINTEXT_INTERNAL:PLAINTEXT,PLAINTEXT:PLAINTEXT"
-  KAFKA_INTER_BROKER_LISTENER_NAME: "PLAINTEXT_INTERNAL"
-  KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: "1"
-  KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
-containerPorts: 29092, 9092
+  SPRING_PROFILES_ACTIVE: "local,local-k8s"
+  SERVER_PORT: "8090"
+  SPRING_DATASOURCE_URL: "jdbc:postgresql://postgresql.ns-controlplane.svc.cluster.local:5432/flinkplatform"
+  SPRING_DATASOURCE_USERNAME: "flinkplatform"
+  SPRING_DATASOURCE_PASSWORD: "flinkplatform"
+  KUBERNETES_PLATFORM_NAMESPACE: "ns-controlplane"
 resources: limits {memory: 512Mi, cpu: 500m}, requests {memory: 256Mi, cpu: 250m}
-Service: name=kafka, ClusterIP, ports 29092 + 9092
+readinessProbe: httpGet /actuator/health port 8090, initialDelaySeconds: 30, periodSeconds: 10, failureThreshold: 6
 ```
 
-## 03-schema-registry.yaml
-
+### Service
 ```yaml
-image: confluentinc/cp-schema-registry:7.6.0
-imagePullPolicy: IfNotPresent
-env:
-  SCHEMA_REGISTRY_HOST_NAME: "schema-registry"
-  SCHEMA_REGISTRY_KAFKASTORE_BOOTSTRAP_SERVERS: "kafka.ns-enterprise.svc.cluster.local:29092"
-  SCHEMA_REGISTRY_LISTENERS: "http://0.0.0.0:8081"
-containerPort: 8081
-resources: limits {memory: 256Mi, cpu: 250m}, requests {memory: 128Mi, cpu: 100m}
-Service: name=schema-registry, ClusterIP, port 8081
+name: backend
+type: ClusterIP
+port: 8090
 ```
 
-## 04-keycloak.yaml
+## frontend.yaml (3 resources)
 
-Two resources in one file (ConfigMap + Deployment + Service):
+### ConfigMap: frontend-nginx-config
+Key: `default.conf`
 
-**ConfigMap**: `keycloak-realm-import` in ns-enterprise
-- key: `realm-export.json`
-- value: full contents of `docker/keycloak/realm-export.json` (read the file and embed it)
+```nginx
+server {
+    listen 80;
+    root /usr/share/nginx/html;
+    index index.html;
 
-**Deployment**:
+    add_header X-Frame-Options "DENY" always;
+    add_header X-Content-Type-Options "nosniff" always;
+
+    location /api/ {
+        proxy_pass http://backend.ns-controlplane.svc.cluster.local:8090;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    location /realms/ {
+        proxy_pass http://keycloak.ns-enterprise.svc.cluster.local:8080;
+        proxy_set_header Host keycloak.ns-enterprise.svc.cluster.local:8080;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    location /kafka-ui/ {
+        proxy_pass http://kafka-ui.ns-enterprise.svc.cluster.local:8080/;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    }
+
+    location /flink/ {
+        proxy_pass http://nginx-flink-proxy.ns-controlplane.svc.cluster.local:80/flink/;
+        proxy_set_header Host $host;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+    }
+
+    location / {
+        try_files $uri $uri/ /index.html;
+    }
+
+    gzip on;
+    gzip_types text/plain text/css application/json application/javascript text/xml;
+}
+```
+
+### Deployment
 ```yaml
-image: quay.io/keycloak/keycloak:24.0
-imagePullPolicy: IfNotPresent
-command: ["start-dev", "--import-realm"]
-env:
-  KEYCLOAK_ADMIN: "admin"
-  KEYCLOAK_ADMIN_PASSWORD: "admin"
-containerPort: 8080
-volumeMounts:
-  - name: realm-import
-    mountPath: /opt/keycloak/data/import
-volumes:
-  - name: realm-import
-    configMap:
-      name: keycloak-realm-import
-startupProbe: httpGet /realms/master, failureThreshold: 30, periodSeconds: 10
-resources: limits {memory: 512Mi, cpu: 500m}, requests {memory: 256Mi, cpu: 250m}
+name: frontend
+image: flinkaidlc-frontend:latest
+imagePullPolicy: Never
+containerPort: 80
+volumeMounts: [name: nginx-config, mountPath: /etc/nginx/conf.d/default.conf, subPath: default.conf]
+volumes: [name: nginx-config, configMap: {name: frontend-nginx-config}]
+resources: limits {memory: 128Mi, cpu: 100m}, requests {memory: 64Mi, cpu: 50m}
+livenessProbe: httpGet / port 80, initialDelaySeconds: 5, periodSeconds: 30
 ```
 
-**Service**: name=keycloak, ClusterIP, port 8080
-
-## 05-minio.yaml
-
+### Service
 ```yaml
-image: bitnami/minio:latest
-imagePullPolicy: IfNotPresent
-env:
-  MINIO_ROOT_USER: "minioadmin"
-  MINIO_ROOT_PASSWORD: "minioadmin"
-  MINIO_DEFAULT_BUCKETS: "flink-local"
-containerPorts: 9000 (API), 9001 (Console)
-volumeMounts:
-  - name: data, mountPath: /bitnami/minio/data
-volumes:
-  - name: data, emptyDir: {}
-livenessProbe: httpGet /minio/health/live port 9000
-resources: limits {memory: 256Mi, cpu: 250m}, requests {memory: 128Mi, cpu: 100m}
-Service: name=minio, ClusterIP, port 9000 (api) + 9001 (console)
+name: frontend
+type: NodePort
+ports: [{port: 80, targetPort: 80, nodePort: 30080}]
 ```
 
-## 06-kafka-ui.yaml
+## nginx-flink-proxy.yaml (3 resources)
 
+### ConfigMap: nginx-flink-proxy-config
+Key: `default.conf`
+
+```nginx
+resolver kube-dns.kube-system.svc.cluster.local valid=10s;
+
+server {
+    listen 80;
+
+    location ~ ^/flink/([^/]+)/([^/]+)/(.*)$ {
+        set $tenant_slug $1;
+        set $pipeline_id $2;
+        set $rest_path $3;
+        set $upstream "pipeline-${pipeline_id}-rest.tenant-${tenant_slug}.svc.cluster.local";
+
+        proxy_pass http://$upstream:8081/$rest_path$is_args$args;
+        proxy_set_header Host $host;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+    }
+}
+```
+
+### Deployment
 ```yaml
-image: provectuslabs/kafka-ui:latest
+name: nginx-flink-proxy
+image: nginx:1.25-alpine
 imagePullPolicy: IfNotPresent
-env:
-  KAFKA_CLUSTERS_0_NAME: "local"
-  KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: "kafka.ns-enterprise.svc.cluster.local:29092"
-  KAFKA_CLUSTERS_0_SCHEMAREGISTRY: "http://schema-registry.ns-enterprise.svc.cluster.local:8081"
-containerPort: 8080
-resources: limits {memory: 256Mi, cpu: 250m}, requests {memory: 128Mi, cpu: 100m}
-Service: name=kafka-ui, ClusterIP, port 8080
+containerPort: 80
+volumeMounts: [name: nginx-config, mountPath: /etc/nginx/conf.d/default.conf, subPath: default.conf]
+volumes: [name: nginx-config, configMap: {name: nginx-flink-proxy-config}]
+resources: limits {memory: 64Mi, cpu: 100m}, requests {memory: 32Mi, cpu: 50m}
+livenessProbe: tcpSocket {port: 80}, initialDelaySeconds: 5, periodSeconds: 30
 ```
 
-## 07-iceberg-rest.yaml
-
+### Service
 ```yaml
-initContainers:
-  - name: wait-for-minio
-    image: curlimages/curl:latest
-    imagePullPolicy: IfNotPresent
-    command: [sh, -c, "until curl -sf http://minio.ns-enterprise.svc.cluster.local:9000/minio/health/live; do echo 'Waiting for MinIO...'; sleep 3; done; echo 'MinIO ready.'"]
-
-image: tabulario/iceberg-rest:latest
-imagePullPolicy: IfNotPresent
-env:
-  CATALOG_WAREHOUSE: "s3://flink-local/iceberg"
-  CATALOG_IO__IMPL: "org.apache.iceberg.aws.s3.S3FileIO"
-  CATALOG_S3_ENDPOINT: "http://minio.ns-enterprise.svc.cluster.local:9000"
-  CATALOG_S3_ACCESS__KEY__ID: "minioadmin"
-  CATALOG_S3_SECRET__ACCESS__KEY: "minioadmin"
-  CATALOG_S3_PATH__STYLE__ACCESS: "true"
-containerPort: 8181
-resources: limits {memory: 256Mi, cpu: 250m}, requests {memory: 128Mi, cpu: 100m}
-Service: name=iceberg-rest, ClusterIP, port 8181
+name: nginx-flink-proxy
+type: ClusterIP
+port: 80
 ```
 
-## Critical Notes
+## Also fix dev/k8s/enterprise/06-kafka-ui.yaml
 
-1. **Kafka listener**: Use `PLAINTEXT_INTERNAL` (not `PLAINTEXT_HOST`) — matches docker-compose
-2. **Keycloak realm**: Read `docker/keycloak/realm-export.json` and embed in ConfigMap — do NOT skip this
-3. **MinIO env var**: `MINIO_ROOT_USER` / `MINIO_ROOT_PASSWORD` (NOT `MINIO_ACCESS_KEY`)
-4. **Iceberg double underscores**: `CATALOG_S3_ACCESS__KEY__ID` — double underscore is required
-5. **Iceberg warehouse**: Use `s3://` (not `s3a://`) for tabulario/iceberg-rest image
-6. **No depends_on in K8s**: Services will self-heal via CrashLoopBackOff. Add initContainers only for Iceberg→MinIO dependency
+Add env vars to the kafka-ui Deployment so /kafka-ui/ proxy works correctly:
+- `SERVER_SERVLET_CONTEXT_PATH=/kafka-ui`
+- `DYNAMIC_CONFIG_ENABLED=true`
 
-## Verification Commands
+## Commit
 
 ```bash
-kubectl apply -f dev/k8s/enterprise/
-kubectl get pods -n ns-enterprise -w
-kubectl exec -n ns-enterprise deploy/schema-registry -- curl -sf http://localhost:8081/subjects
-kubectl exec -n ns-enterprise deploy/minio -- curl -sf http://localhost:9000/minio/health/live
-kubectl exec -n ns-enterprise deploy/iceberg-rest -- curl -sf http://localhost:8181/v1/config
+git add dev/k8s/controlplane/ dev/k8s/enterprise/06-kafka-ui.yaml
+git commit -m "build(unit-02-controlplane-namespace): create controlplane namespace K8s manifests"
 ```
