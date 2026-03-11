@@ -1,5 +1,5 @@
 ---
-status: pending
+status: in_progress
 depends_on: []
 branch: ai-dlc/k8s-local-dev-environment/01-enterprise-namespace
 discipline: devops
