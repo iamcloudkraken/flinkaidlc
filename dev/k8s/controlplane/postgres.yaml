@@ -1,0 +1,70 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: postgres
+  namespace: ns-controlplane
+  labels:
+    app.kubernetes.io/part-of: flink-platform-controlplane
+    app.kubernetes.io/name: postgres
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: postgres
+  template:
+    metadata:
+      labels:
+        app: postgres
+        app.kubernetes.io/part-of: flink-platform-controlplane
+        app.kubernetes.io/name: postgres
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:16-alpine
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: POSTGRES_DB
+              value: "flinkplatform"
+            - name: POSTGRES_USER
+              value: "flinkplatform"
+            - name: POSTGRES_PASSWORD
+              value: "flinkplatform"
+          ports:
+            - containerPort: 5432
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/postgresql/data
+          resources:
+            limits:
+              memory: 256Mi
+              cpu: 250m
+            requests:
+              memory: 128Mi
+              cpu: 100m
+          readinessProbe:
+            exec:
+              command:
+                - pg_isready
+                - -U
+                - flinkplatform
+            initialDelaySeconds: 5
+            periodSeconds: 5
+      volumes:
+        - name: data
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgresql
+  namespace: ns-controlplane
+  labels:
+    app.kubernetes.io/part-of: flink-platform-controlplane
+    app.kubernetes.io/name: postgres
+spec:
+  selector:
+    app: postgres
+  ports:
+    - port: 5432
+      targetPort: 5432
+  type: ClusterIP

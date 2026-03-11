@@ -1,0 +1,116 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: backend
+  namespace: ns-controlplane
+  labels:
+    app.kubernetes.io/part-of: flink-platform-controlplane
+    app.kubernetes.io/name: backend
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: flink-platform-backend
+  labels:
+    app.kubernetes.io/part-of: flink-platform-controlplane
+    app.kubernetes.io/name: backend
+rules:
+  - apiGroups: [""]
+    resources: ["namespaces", "serviceaccounts", "resourcequotas"]
+    verbs: ["get", "list", "create", "update", "patch", "delete"]
+  - apiGroups: ["rbac.authorization.k8s.io"]
+    resources: ["roles", "rolebindings"]
+    verbs: ["get", "list", "create", "update", "patch", "delete"]
+  - apiGroups: ["networking.k8s.io"]
+    resources: ["networkpolicies"]
+    verbs: ["get", "list", "create", "update", "patch", "delete"]
+  - apiGroups: ["flink.apache.org"]
+    resources: ["flinkdeployments"]
+    verbs: ["get", "list", "create", "update", "patch", "delete"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: flink-platform-backend
+  labels:
+    app.kubernetes.io/part-of: flink-platform-controlplane
+    app.kubernetes.io/name: backend
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: flink-platform-backend
+subjects:
+  - kind: ServiceAccount
+    name: backend
+    namespace: ns-controlplane
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: backend
+  namespace: ns-controlplane
+  labels:
+    app.kubernetes.io/part-of: flink-platform-controlplane
+    app.kubernetes.io/name: backend
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: backend
+  template:
+    metadata:
+      labels:
+        app: backend
+        app.kubernetes.io/part-of: flink-platform-controlplane
+        app.kubernetes.io/name: backend
+    spec:
+      serviceAccountName: backend
+      containers:
+        - name: backend
+          image: flinkaidlc-backend:latest
+          imagePullPolicy: Never
+          env:
+            - name: SPRING_PROFILES_ACTIVE
+              value: "local,local-k8s"
+            - name: SERVER_PORT
+              value: "8090"
+            - name: SPRING_DATASOURCE_URL
+              value: "jdbc:postgresql://postgresql.ns-controlplane.svc.cluster.local:5432/flinkplatform"
+            - name: SPRING_DATASOURCE_USERNAME
+              value: "flinkplatform"
+            - name: SPRING_DATASOURCE_PASSWORD
+              value: "flinkplatform"
+            - name: KUBERNETES_PLATFORM_NAMESPACE
+              value: "ns-controlplane"
+          ports:
+            - containerPort: 8090
+          resources:
+            limits:
+              memory: 512Mi
+              cpu: 500m
+            requests:
+              memory: 256Mi
+              cpu: 250m
+          readinessProbe:
+            httpGet:
+              path: /actuator/health
+              port: 8090
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            failureThreshold: 6
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: backend
+  namespace: ns-controlplane
+  labels:
+    app.kubernetes.io/part-of: flink-platform-controlplane
+    app.kubernetes.io/name: backend
+spec:
+  selector:
+    app: backend
+  ports:
+    - port: 8090
+      targetPort: 8090
+  type: ClusterIP
