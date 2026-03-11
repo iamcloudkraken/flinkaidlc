@@ -1,263 +1,131 @@
-# Tactical Plan: unit-02-controlplane-namespace
+# Tactical Plan: unit-03-backend-k8s-config
 
-## Key Findings from Repo Exploration
+## Key Findings
 
-- `frontend/nginx-local.conf` exists — Docker Compose Nginx config with /api/ and /realms/ routes. Base for K8s config (add /kafka-ui/ and /flink/).
-- `application.yml` uses env vars: `DATABASE_URL`, `KUBERNETES_PLATFORM_NAMESPACE` (default: `flink-platform`), `OAUTH2_ISSUER_URI`
-- `SPRING_DATASOURCE_URL` env var will override `spring.datasource.url` via Spring's relaxed binding (takes precedence over profile properties)
-- Unit-01's kafka-ui Deployment does NOT set `SERVER_SERVLET_CONTEXT_PATH=/kafka-ui` — Kafka UI assets may 404 when proxied via `/kafka-ui/` prefix. Builder must also fix `dev/k8s/enterprise/06-kafka-ui.yaml`.
-- nginx base image uses standard `include /etc/nginx/conf.d/*.conf` inside `http {}` — resolver directive before server{} is in http context (correct)
+### 1. application.yml (src/main/resources/application.yml)
 
-## File Structure
+The base config uses environment-variable substitution for all deployment-sensitive values:
 
-```
-dev/k8s/controlplane/
-├── namespace.yaml
-├── postgres.yaml              (Deployment + Service)
-├── backend.yaml               (ServiceAccount + ClusterRole + ClusterRoleBinding + Deployment + Service)
-├── frontend.yaml              (ConfigMap + Deployment + Service)
-└── nginx-flink-proxy.yaml     (ConfigMap + Deployment + Service)
-```
+- Line 3: spring.datasource.url: ${DATABASE_URL} — no default
+- Line 4: spring.datasource.username: ${DATABASE_USER} — no default
+- Line 5: spring.datasource.password: ${DATABASE_PASSWORD} — no default
+- Line 14: spring.security.oauth2.resourceserver.jwt.issuer-uri: ${OAUTH2_ISSUER_URI} — no default
+- Line 26: flink.sql-runner.image: ${FLINK_SQL_RUNNER_IMAGE:flink-sql-runner:latest} — has default
+- Line 33: kubernetes.platform-namespace: ${KUBERNETES_PLATFORM_NAMESPACE:flink-platform} — default is flink-platform
 
-## Common Patterns (ALL resources)
+Confirmed property key: kubernetes.platform-namespace (hyphenated, not camelCase).
 
-```yaml
-metadata:
-  namespace: ns-controlplane
-  labels:
-    app.kubernetes.io/part-of: flink-platform-controlplane
-    app.kubernetes.io/name: <service>
-# Deployments: selector.matchLabels AND pod template labels:
-    app: <service>
-spec:
-  replicas: 1
-```
+There is NO spring.kafka.bootstrap-servers in application.yml. Kafka bootstrap is stored as
+pipeline entity data, not at the application level. schema.registry.url is also not in
+application.yml (only in application-local.properties).
 
-## namespace.yaml
+### 2. application-local.properties (src/main/resources/application-local.properties)
 
-```yaml
-apiVersion: v1
-kind: Namespace
-metadata:
-  name: ns-controlplane
-  labels:
-    app.kubernetes.io/part-of: flink-platform-controlplane
-```
+Current local profile sets:
+- Line 7: spring.datasource.url=jdbc:postgresql://localhost:5432/flinkplatform
+- Line 8: spring.datasource.username=flinkplatform
+- Line 9: spring.datasource.password=flinkplatform
+- Line 12: k8s.provisioner.enabled=false
+- Line 15: spring.security.oauth2.resourceserver.jwt.issuer-uri= (blank)
+- Line 18: oauth2.admin.url= (blank)
+- Line 21: schema.registry.url=http://localhost:8082
 
-## postgres.yaml
+The local-k8s profile will be used alongside the local profile
+(SPRING_PROFILES_ACTIVE=local,local-k8s), so it only needs to override the localhost values above.
 
-```yaml
-# Deployment
-image: postgres:16-alpine
-imagePullPolicy: IfNotPresent
-env:
-  POSTGRES_DB: flinkplatform
-  POSTGRES_USER: flinkplatform
-  POSTGRES_PASSWORD: flinkplatform
-containerPort: 5432
-volumeMounts: [name: data, mountPath: /var/lib/postgresql/data]
-volumes: [name: data, emptyDir: {}]
-resources: limits {memory: 256Mi, cpu: 250m}, requests {memory: 128Mi, cpu: 100m}
-readinessProbe: exec [pg_isready, -U, flinkplatform], initialDelaySeconds: 5, periodSeconds: 5
+### 3. TenantNamespaceProvisioner.java
 
-# Service
-name: postgresql  # CRITICAL: must be 'postgresql' not 'postgres'
-type: ClusterIP
-port: 5432
-```
+FINDING: NO CHANGE NEEDED.
 
-## backend.yaml (5 resources separated by ---)
+The constructor at line 57 already reads platformNamespace from the property:
+  @Value("${kubernetes.platform-namespace:flink-platform}") String platformNamespace
 
-### ServiceAccount
-```yaml
-name: backend
-namespace: ns-controlplane
-```
+And at line 257, the NetworkPolicy namespace selector correctly uses the injected field:
+  .withMatchLabels(Map.of("kubernetes.io/metadata.name", platformNamespace))
 
-### ClusterRole (cluster-scoped, no namespace)
-```yaml
-name: flink-platform-backend
-rules:
-- apiGroups: [""]
-  resources: ["namespaces", "serviceaccounts", "resourcequotas"]
-  verbs: ["get", "list", "create", "update", "patch", "delete"]
-- apiGroups: ["rbac.authorization.k8s.io"]
-  resources: ["roles", "rolebindings"]
-  verbs: ["get", "list", "create", "update", "patch", "delete"]
-- apiGroups: ["networking.k8s.io"]
-  resources: ["networkpolicies"]
-  verbs: ["get", "list", "create", "update", "patch", "delete"]
-- apiGroups: ["flink.apache.org"]
-  resources: ["flinkdeployments"]
-  verbs: ["get", "list", "create", "update", "patch", "delete"]
-```
+The field is NOT hardcoded. Setting kubernetes.platform-namespace=ns-controlplane in the new
+properties file is sufficient.
 
-### ClusterRoleBinding (cluster-scoped, no namespace)
-```yaml
-name: flink-platform-backend
-roleRef:
-  apiGroup: rbac.authorization.k8s.io
-  kind: ClusterRole
-  name: flink-platform-backend
-subjects:
-  - kind: ServiceAccount
-    name: backend
-    namespace: ns-controlplane
-```
+### 4. LocalDataSeeder.java
 
-### Deployment
-```yaml
-name: backend
-namespace: ns-controlplane
-spec.template.spec.serviceAccountName: backend
-image: flinkaidlc-backend:latest
-imagePullPolicy: Never
-containerPort: 8090
-env:
-  SPRING_PROFILES_ACTIVE: "local,local-k8s"
-  SERVER_PORT: "8090"
-  SPRING_DATASOURCE_URL: "jdbc:postgresql://postgresql.ns-controlplane.svc.cluster.local:5432/flinkplatform"
-  SPRING_DATASOURCE_USERNAME: "flinkplatform"
-  SPRING_DATASOURCE_PASSWORD: "flinkplatform"
-  KUBERNETES_PLATFORM_NAMESPACE: "ns-controlplane"
-resources: limits {memory: 512Mi, cpu: 500m}, requests {memory: 256Mi, cpu: 250m}
-readinessProbe: httpGet /actuator/health port 8090, initialDelaySeconds: 30, periodSeconds: 10, failureThreshold: 6
-```
+FINDING: NO CHANGE NEEDED.
 
-### Service
-```yaml
-name: backend
-type: ClusterIP
-port: 8090
-```
+LocalDataSeeder does NOT use spring.kafka.bootstrap-servers or any @Value injection for Kafka.
+Instead:
+- Line 84: source.setBootstrapServers("kafka:29092") — hardcoded Docker Compose service name
+- Line 95: sink.setBootstrapServers("kafka:29092") — same
 
-## frontend.yaml (3 resources)
+These are seed data values stored as demo pipeline configuration, not Spring app connectivity.
+The backend has no application-level Kafka consumer/producer. No fix needed.
 
-### ConfigMap: frontend-nginx-config
-Key: `default.conf`
+---
 
-```nginx
-server {
-    listen 80;
-    root /usr/share/nginx/html;
-    index index.html;
+## Changes Required
 
-    add_header X-Frame-Options "DENY" always;
-    add_header X-Content-Type-Options "nosniff" always;
+### Change 1: Create src/main/resources/application-local-k8s.properties
 
-    location /api/ {
-        proxy_pass http://backend.ns-controlplane.svc.cluster.local:8090;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-    }
+Content:
 
-    location /realms/ {
-        proxy_pass http://keycloak.ns-enterprise.svc.cluster.local:8080;
-        proxy_set_header Host keycloak.ns-enterprise.svc.cluster.local:8080;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-    }
+# =============================================
+# Local K8s Development Profile
+# Run with: SPRING_PROFILES_ACTIVE=local,local-k8s
+# Overrides application-local.properties with in-cluster K8s service DNS names.
+# =============================================
 
-    location /kafka-ui/ {
-        proxy_pass http://kafka-ui.ns-enterprise.svc.cluster.local:8080/;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-    }
+# Database -- PostgreSQL running in ns-controlplane
+spring.datasource.url=jdbc:postgresql://postgresql.ns-controlplane.svc.cluster.local:5432/flinkplatform
+spring.datasource.username=flinkplatform
+spring.datasource.password=flinkplatform
 
-    location /flink/ {
-        proxy_pass http://nginx-flink-proxy.ns-controlplane.svc.cluster.local:80/flink/;
-        proxy_set_header Host $host;
-        proxy_http_version 1.1;
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection "upgrade";
-    }
+# Kafka -- in ns-enterprise (referenced for Kafka admin/topic validation)
+spring.kafka.bootstrap-servers=kafka.ns-enterprise.svc.cluster.local:29092
 
-    location / {
-        try_files $uri $uri/ /index.html;
-    }
+# Schema Registry -- in ns-enterprise
+schema.registry.url=http://schema-registry.ns-enterprise.svc.cluster.local:8081
 
-    gzip on;
-    gzip_types text/plain text/css application/json application/javascript text/xml;
-}
-```
+# Kubernetes provisioner -- enabled (real K8s calls against the cluster)
+k8s.provisioner.enabled=true
 
-### Deployment
-```yaml
-name: frontend
-image: flinkaidlc-frontend:latest
-imagePullPolicy: Never
-containerPort: 80
-volumeMounts: [name: nginx-config, mountPath: /etc/nginx/conf.d/default.conf, subPath: default.conf]
-volumes: [name: nginx-config, configMap: {name: frontend-nginx-config}]
-resources: limits {memory: 128Mi, cpu: 100m}, requests {memory: 64Mi, cpu: 50m}
-livenessProbe: httpGet / port 80, initialDelaySeconds: 5, periodSeconds: 30
-```
+# Platform namespace -- where the backend runs (used in NetworkPolicy ingress allow)
+kubernetes.platform-namespace=ns-controlplane
 
-### Service
-```yaml
-name: frontend
-type: NodePort
-ports: [{port: 80, targetPort: 80, nodePort: 30080}]
-```
+# Flink SQL runner image -- built locally and loaded into the cluster
+flink.sql-runner.image=flink-sql-runner:latest
 
-## nginx-flink-proxy.yaml (3 resources)
+# Blank issuer-uri activates mock JWT decoder (same as local profile)
+spring.security.oauth2.resourceserver.jwt.issuer-uri=
 
-### ConfigMap: nginx-flink-proxy-config
-Key: `default.conf`
+### Change 2: TenantNamespaceProvisioner.java -- No change needed
 
-```nginx
-resolver kube-dns.kube-system.svc.cluster.local valid=10s;
+The platformNamespace field is already injected from
+${kubernetes.platform-namespace:flink-platform} (line 57). Setting
+kubernetes.platform-namespace=ns-controlplane in the new properties file is sufficient.
 
-server {
-    listen 80;
+### Change 3: LocalDataSeeder.java -- No change needed
 
-    location ~ ^/flink/([^/]+)/([^/]+)/(.*)$ {
-        set $tenant_slug $1;
-        set $pipeline_id $2;
-        set $rest_path $3;
-        set $upstream "pipeline-${pipeline_id}-rest.tenant-${tenant_slug}.svc.cluster.local";
+No Spring application-level Kafka connectivity. The hardcoded kafka:29092 values are demo
+pipeline seed data for Docker Compose, not backend infrastructure config.
 
-        proxy_pass http://$upstream:8081/$rest_path$is_args$args;
-        proxy_set_header Host $host;
-        proxy_http_version 1.1;
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection "upgrade";
-    }
-}
-```
+---
 
-### Deployment
-```yaml
-name: nginx-flink-proxy
-image: nginx:1.25-alpine
-imagePullPolicy: IfNotPresent
-containerPort: 80
-volumeMounts: [name: nginx-config, mountPath: /etc/nginx/conf.d/default.conf, subPath: default.conf]
-volumes: [name: nginx-config, configMap: {name: nginx-flink-proxy-config}]
-resources: limits {memory: 64Mi, cpu: 100m}, requests {memory: 32Mi, cpu: 50m}
-livenessProbe: tcpSocket {port: 80}, initialDelaySeconds: 5, periodSeconds: 30
-```
+## Implementation Steps for Builder
 
-### Service
-```yaml
-name: nginx-flink-proxy
-type: ClusterIP
-port: 80
-```
+1. Create file: src/main/resources/application-local-k8s.properties with the exact content above.
+2. No changes needed in TenantNamespaceProvisioner.java.
+3. No changes needed in LocalDataSeeder.java.
+4. Commit with the message below.
 
-## Also fix dev/k8s/enterprise/06-kafka-ui.yaml
+## Commit Message
 
-Add env vars to the kafka-ui Deployment so /kafka-ui/ proxy works correctly:
-- `SERVER_SERVLET_CONTEXT_PATH=/kafka-ui`
-- `DYNAMIC_CONFIG_ENABLED=true`
+feat(unit-03-backend-k8s-config): add local-k8s Spring profile
 
-## Commit
+Adds application-local-k8s.properties activated alongside the existing
+local profile (SPRING_PROFILES_ACTIVE=local,local-k8s). Overrides
+localhost datasource/schema-registry URLs with in-cluster K8s service
+DNS names, enables the real K8s provisioner, and sets
+kubernetes.platform-namespace=ns-controlplane so TenantNamespaceProvisioner
+generates correct NetworkPolicy namespace selector labels.
 
-```bash
-git add dev/k8s/controlplane/ dev/k8s/enterprise/06-kafka-ui.yaml
-git commit -m "build(unit-02-controlplane-namespace): create controlplane namespace K8s manifests"
-```
+TenantNamespaceProvisioner already reads platformNamespace from
+${kubernetes.platform-namespace} -- no Java changes needed.
+LocalDataSeeder has no Spring-level Kafka connectivity -- no Java changes needed.
