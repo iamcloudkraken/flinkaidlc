@@ -27,10 +27,22 @@ kubectl rollout status deployment/cert-manager-cainjector -n cert-manager --time
 kubectl rollout status deployment/cert-manager-webhook -n cert-manager --timeout=120s
 
 # 2. Install Flink Kubernetes Operator via Helm
+# The Apache downloads mirror only keeps the latest release; older versions are at archive.apache.org
 echo "==> Installing Flink Kubernetes Operator v${FLINK_OPERATOR_VERSION}..."
-helm repo add flink-operator-repo "https://downloads.apache.org/flink/flink-kubernetes-operator-${FLINK_OPERATOR_VERSION}/" 2>/dev/null || \
-  helm repo add flink-operator-repo "https://downloads.apache.org/flink/flink-kubernetes-operator-${FLINK_OPERATOR_VERSION}/"
-helm repo update
+FLINK_DOWNLOADS_URL="https://downloads.apache.org/flink/flink-kubernetes-operator-${FLINK_OPERATOR_VERSION}/"
+FLINK_ARCHIVE_URL="https://archive.apache.org/dist/flink/flink-kubernetes-operator-${FLINK_OPERATOR_VERSION}/"
+
+if helm repo add flink-operator-repo "$FLINK_DOWNLOADS_URL" 2>/dev/null; then
+  echo "    Using Apache downloads mirror."
+elif helm repo add flink-operator-repo "$FLINK_ARCHIVE_URL" 2>/dev/null; then
+  echo "    Using Apache archive mirror."
+else
+  # Remove stale entry and re-add from archive (repo already exists with wrong URL)
+  helm repo remove flink-operator-repo 2>/dev/null || true
+  helm repo add flink-operator-repo "$FLINK_ARCHIVE_URL"
+  echo "    Using Apache archive mirror (re-added)."
+fi
+helm repo update flink-operator-repo
 helm upgrade --install flink-kubernetes-operator flink-operator-repo/flink-kubernetes-operator \
   --namespace flink-operator \
   --create-namespace \
