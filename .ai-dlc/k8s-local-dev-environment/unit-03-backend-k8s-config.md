@@ -1,5 +1,5 @@
 ---
-status: pending
+status: in_progress
 depends_on: [unit-01-enterprise-namespace, unit-02-controlplane-namespace]
 branch: ai-dlc/k8s-local-dev-environment/03-backend-k8s-config
 discipline: backend
