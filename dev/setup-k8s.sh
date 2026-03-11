@@ -18,6 +18,20 @@ if [ "$CURRENT_CONTEXT" != "docker-desktop" ]; then
   exit 1
 fi
 
+# Verify the cluster API server is reachable
+echo "==> Verifying cluster connectivity..."
+if ! kubectl cluster-info --request-timeout=10s >/dev/null 2>&1; then
+  echo ""
+  echo "ERROR: Cannot connect to the Kubernetes API server."
+  echo ""
+  echo "Ensure Docker Desktop Kubernetes is running:"
+  echo "  Docker Desktop → Settings → Kubernetes → 'Kubernetes is running' (green)"
+  echo ""
+  echo "If it just started, wait 30–60 seconds and retry."
+  exit 1
+fi
+echo "    Cluster reachable."
+
 # 1. Install cert-manager (required by Flink Operator webhook)
 echo "==> Installing cert-manager v1.14.4..."
 kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.14.4/cert-manager.yaml

@@ -55,6 +55,16 @@ k8s-guard:
 		echo "Switch context: kubectl config use-context docker-desktop"; \
 		exit 1; \
 	fi
+	@if ! kubectl cluster-info --request-timeout=10s >/dev/null 2>&1; then \
+		echo ""; \
+		echo "ERROR: Cannot connect to the Kubernetes API server."; \
+		echo ""; \
+		echo "Ensure Docker Desktop Kubernetes is running:"; \
+		echo "  Docker Desktop → Settings → Kubernetes → 'Kubernetes is running' (green)"; \
+		echo ""; \
+		echo "If it just started, wait 30-60 seconds and retry."; \
+		exit 1; \
+	fi
 
 ## Bootstrap cluster (run once): installs cert-manager + Flink Operator
 .PHONY: k8s-setup
