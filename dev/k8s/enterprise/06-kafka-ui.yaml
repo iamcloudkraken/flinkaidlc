@@ -28,6 +28,10 @@ spec:
               value: "kafka.ns-enterprise.svc.cluster.local:29092"
             - name: KAFKA_CLUSTERS_0_SCHEMAREGISTRY
               value: "http://schema-registry.ns-enterprise.svc.cluster.local:8081"
+            - name: SERVER_SERVLET_CONTEXT_PATH
+              value: "/kafka-ui"
+            - name: DYNAMIC_CONFIG_ENABLED
+              value: "true"
           ports:
             - containerPort: 8080
           resources:
