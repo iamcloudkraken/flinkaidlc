@@ -1,5 +1,5 @@
 ---
-status: in_progress
+status: completed
 depends_on: [unit-01-enterprise-namespace]
 branch: ai-dlc/k8s-local-dev-environment/02-controlplane-namespace
 discipline: devops
