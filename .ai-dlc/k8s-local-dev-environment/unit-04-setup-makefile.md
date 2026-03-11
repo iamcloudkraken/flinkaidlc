@@ -1,5 +1,5 @@
 ---
-status: in_progress
+status: completed
 depends_on: [unit-01-enterprise-namespace, unit-02-controlplane-namespace, unit-03-backend-k8s-config]
 branch: ai-dlc/k8s-local-dev-environment/04-setup-makefile
 discipline: devops
