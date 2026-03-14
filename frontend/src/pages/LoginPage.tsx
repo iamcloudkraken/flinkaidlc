@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import axios from 'axios';
 import { useAuth } from '../auth/AuthContext';
+import { listTenants, type TenantSummary } from '../api/tenants';
 
 interface LocationState {
   from?: { pathname: string };
@@ -27,9 +28,21 @@ export default function LoginPage() {
   const state = location.state as LocationState | null;
   const from = state?.from?.pathname ?? '/dashboard';
 
-  const [tenantId, setTenantId] = useState('');
-  const [username, setUsername] = useState('');
-  const [password, setPassword] = useState('');
+  const [tenantId, setTenantId] = useState('00000000-0000-0000-0000-000000000001');
+  const [tenants, setTenants] = useState<TenantSummary[]>([]);
+  const [tenantsLoading, setTenantsLoading] = useState(true);
+  const [username, setUsername] = useState('dev@local.dev');
+  const [password, setPassword] = useState('dev123');
+
+  function demoEmailForSlug(slug: string): string {
+    return slug === 'demo' ? 'dev@local.dev' : `dev@${slug}.local`;
+  }
+
+  function handleTenantChange(newId: string) {
+    setTenantId(newId);
+    const tenant = tenants.find((t) => t.id === newId);
+    if (tenant) setUsername(demoEmailForSlug(tenant.slug));
+  }
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -39,6 +52,21 @@ export default function LoginPage() {
       navigate('/dashboard', { replace: true });
     }
   }, [isAuthenticated, navigate]);
+
+  // Load tenant list for the dropdown
+  useEffect(() => {
+    listTenants()
+      .then((data) => {
+        setTenants(data);
+        const initial = data.find((t) => t.id === tenantId) ?? data[0];
+        if (initial) {
+          setTenantId(initial.id);
+          setUsername(demoEmailForSlug(initial.slug));
+        }
+      })
+      .catch(() => {/* silently fall back to typed input */})
+      .finally(() => setTenantsLoading(false));
+  }, []);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -96,6 +124,10 @@ export default function LoginPage() {
       <div className="bg-white shadow-md rounded-lg p-8">
         <h1 className="text-2xl font-bold text-gray-800 mb-6">Sign In</h1>
 
+        <div className="mb-4 p-3 bg-amber-50 border border-amber-200 rounded text-amber-700 text-xs">
+          Local dev — fields pre-filled with demo credentials.
+        </div>
+
         {error && (
           <div
             role="alert"
@@ -112,17 +144,36 @@ export default function LoginPage() {
               htmlFor="tenantId"
               className="block text-sm font-medium text-gray-700 mb-1"
             >
-              Tenant ID (UUID)
+              Tenant
             </label>
-            <input
-              id="tenantId"
-              type="text"
-              autoComplete="off"
-              placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
-              value={tenantId}
-              onChange={(e) => setTenantId(e.target.value)}
-              className="w-full border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
-            />
+            {tenantsLoading ? (
+              <div className="w-full border border-gray-300 rounded px-3 py-2 text-sm text-gray-400">
+                Loading tenants…
+              </div>
+            ) : tenants.length > 0 ? (
+              <select
+                id="tenantId"
+                value={tenantId}
+                onChange={(e) => handleTenantChange(e.target.value)}
+                className="w-full border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white"
+              >
+                {tenants.map((t) => (
+                  <option key={t.id} value={t.id}>
+                    {t.name} ({t.id})
+                  </option>
+                ))}
+              </select>
+            ) : (
+              <input
+                id="tenantId"
+                type="text"
+                autoComplete="off"
+                placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+                value={tenantId}
+                onChange={(e) => setTenantId(e.target.value)}
+                className="w-full border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              />
+            )}
           </div>
 
           <div className="mb-4">

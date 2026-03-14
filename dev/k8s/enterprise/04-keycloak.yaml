@@ -53,6 +53,24 @@ data:
           "attributes": {
             "tenant_id": ["00000000-0000-0000-0000-000000000001"]
           }
+        },
+        {
+          "username": "dev10001",
+          "email": "dev@10001.local",
+          "enabled": true,
+          "emailVerified": true,
+          "firstName": "Dev",
+          "lastName": "10001",
+          "credentials": [
+            {
+              "type": "password",
+              "value": "dev123",
+              "temporary": false
+            }
+          ],
+          "attributes": {
+            "tenant_id": ["00000000-0000-0000-0000-000000010001"]
+          }
         }
       ],
       "clientScopes": [

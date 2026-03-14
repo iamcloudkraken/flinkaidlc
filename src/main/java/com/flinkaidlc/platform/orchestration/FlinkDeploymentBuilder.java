@@ -32,6 +32,16 @@ public class FlinkDeploymentBuilder {
     @Value("${flink.state.s3-bucket:flink-state}")
     private String s3Bucket;
 
+    /** Optional: when set (e.g. local-k8s with MinIO), injected into flinkConfiguration for checkpoint/savepoint storage. */
+    @Value("${flink.s3.endpoint:}")
+    private String s3Endpoint;
+
+    @Value("${flink.s3.access-key:}")
+    private String s3AccessKey;
+
+    @Value("${flink.s3.secret-key:}")
+    private String s3SecretKey;
+
     @Value("${kubernetes.namespace-prefix:tenant-}")
     private String namespacePrefix;
 
@@ -104,6 +114,17 @@ public class FlinkDeploymentBuilder {
                 flinkConfig.putIfAbsent("s3.secret-key", s.getSecretKey());
             });
 
+        // For checkpoint/savepoint storage (e.g. MinIO in local-k8s): inject endpoint and credentials when configured
+        if (s3Endpoint != null && !s3Endpoint.isBlank()) {
+            flinkConfig.put("s3.endpoint", s3Endpoint);
+            if (s3AccessKey != null && !s3AccessKey.isBlank()) {
+                flinkConfig.putIfAbsent("s3.access-key", s3AccessKey);
+            }
+            if (s3SecretKey != null && !s3SecretKey.isBlank()) {
+                flinkConfig.putIfAbsent("s3.secret-key", s3SecretKey);
+            }
+        }
+
         Map<String, Object> jobManagerResource = new HashMap<>();
         jobManagerResource.put("memory", "1024m");
         jobManagerResource.put("cpu", 0.5);
@@ -124,7 +145,8 @@ public class FlinkDeploymentBuilder {
 
         Map<String, Object> spec = new HashMap<>();
         spec.put("image", flinkImage);
-        spec.put("flinkVersion", "v1_20");
+        spec.put("imagePullPolicy", "Never");
+        spec.put("flinkVersion", "v1_18");
         spec.put("flinkConfiguration", flinkConfig);
         spec.put("serviceAccount", "flink");
         spec.put("jobManager", Map.of("resource", jobManagerResource));

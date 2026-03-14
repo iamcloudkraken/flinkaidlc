@@ -241,24 +241,70 @@ You can also run the backend natively against the Docker Desktop cluster:
 SPRING_PROFILES_ACTIVE=local,local-k8s mvn spring-boot:run
 ```
 
-### 5. Deploy a pipeline
+### 5. Deploy a demo pipeline
+
+Pre-seeded demo topics and schemas are created automatically by the `demo-seed` Job when the cluster starts:
+
+| | Name | Schema subject |
+|-|------|----------------|
+| **Source topic** | `demo.events` | `demo.events-value` (`ClickEvent`) |
+| **Sink topic** | `demo.enriched-events` | `demo.enriched-events-value` (`EnrichedClickEvent`) |
+
+Use these in the Flink SQL wizard:
+
+```
+Bootstrap servers:   kafka.ns-enterprise.svc.cluster.local:29092
+Schema Registry URL: http://schema-registry.ns-enterprise.svc.cluster.local:8081
+Source topic:        demo.events
+Sink topic:          demo.enriched-events
+Format:              avro-confluent
+```
+
+Steps:
 
 1. Open the UI at http://localhost:30080
-2. Log in as `dev@local.dev` / `dev123`
-3. Navigate to **Pipelines → New Pipeline**
-4. Complete the wizard and click **Create Pipeline**
-5. A `FlinkDeployment` CRD is created in `tenant-{slug}` namespace
+2. Log in as `dev@local.dev` / `dev123` (pre-filled)
+3. Register a tenant with slug `10001` (or any 5-digit number)
+4. Navigate to **Pipelines → New Pipeline**
+5. Complete the wizard using the demo topic details above and click **Create Pipeline**
+6. A `FlinkDeployment` CRD is created in `tenant-10001` namespace
 
 ### 6. View Flink Web UI
 
-No port-forwarding needed. The Nginx Flink proxy routes requests automatically:
+No port-forwarding needed. The Nginx Flink proxy routes requests automatically.
 
-```bash
-make flink-ui TENANT=my-tenant PIPELINE=pipeline-id
-# Prints: http://localhost:30080/flink/my-tenant/pipeline-id/
+For the demo pipeline, the URL pattern is:
+
+```
+http://localhost:30080/flink/{tenant-slug}/{pipeline-id}/
 ```
 
-Open the URL directly in your browser.
+Example for tenant `10001` with pipeline ID `abc123`:
+
+```
+http://localhost:30080/flink/10001/abc123/
+```
+
+Get the pipeline ID from the UI or:
+
+```bash
+kubectl get flinkdeployment -n tenant-10001
+# NAME       JOB STATUS   LIFECYCLE STATE
+# abc123     RUNNING      STABLE
+```
+
+Then open:
+
+```
+http://localhost:30080/flink/10001/abc123/
+```
+
+Or use the helper:
+
+```bash
+make flink-ui TENANT=10001 PIPELINE=abc123
+# Prints: http://localhost:30080/flink/10001/abc123/
+```
 
 ### Service URLs (Mode 3)
 
@@ -278,13 +324,22 @@ make k8s-status                              # Pod readiness across all namespac
 make k8s-down                                # Delete ns-enterprise and ns-controlplane
                                              # (tenant-* namespaces preserved for debugging)
 make k8s-up                                  # Idempotent — safe to re-run after changes
-make flink-ui TENANT=acme PIPELINE=abc123    # Print Flink UI URL
+make flink-ui TENANT=10001 PIPELINE=abc123   # Print Flink UI URL
 ```
 
 ### Rebuilding after code changes
 
 ```bash
 make k8s-up   # Rebuilds images and re-applies manifests (kubectl apply is idempotent)
+```
+
+If you changed the **flink-sql-runner** Dockerfile (e.g. added the S3 plugin) and pods still fail with "Could not find a file system implementation for scheme 's3'", force a clean rebuild so the new image is used:
+
+```bash
+docker build --no-cache -t flinkaidlc-flink-sql-runner:latest docker/flink-sql-runner
+# Then delete the FlinkDeployment so the operator recreates pods with the new image:
+kubectl delete flinkdeployment -n tenant-10001 -l app.kubernetes.io/managed-by=flink-platform
+# Redeploy the pipeline from the UI (or let the platform recreate it).
 ```
 
 For a rolling restart of a single service without rebuilding:
@@ -316,6 +371,16 @@ mvn verify
 ```bash
 mvn test -Dtest=PipelineControllerIntegrationTest
 ```
+
+### Test tenant ID
+
+Integration tests use a fixed tenant ID injected via `TestSecurityConfig`:
+
+```
+00000000-0000-0000-0000-000000000001
+```
+
+This ID is embedded in the mock JWT `tenant_id` claim so authenticated endpoints resolve to the correct tenant without a real Keycloak token.
 
 ---
 
@@ -350,14 +415,25 @@ Schema Registry URLs by mode:
   Mode 3 (K8s):            http://schema-registry.ns-enterprise.svc.cluster.local:8081
 ```
 
-### Flink pipeline stays in DEPLOYING indefinitely
+### Flink pipeline stays in DEPLOYING indefinitely / flink-main-container CrashLoopBackOff
+
+Often caused by the job-manager pod failing to reach S3 (MinIO) for checkpoints. The backend must inject `s3.endpoint` and credentials into the FlinkDeployment when using MinIO (Mode 3). Ensure `application-local-k8s.properties` has:
+
+- `flink.state.s3-bucket=flink-local` (bucket created by minio-init)
+- `flink.s3.endpoint=http://minio.ns-enterprise.svc.cluster.local:9000`
+- `flink.s3.access-key=minioadmin` and `flink.s3.secret-key=minioadmin`
+
+Then redeploy the pipeline (delete the FlinkDeployment and create again, or restart the backend so new deployments get the config).
 
 ```bash
+# Inspect the failing pod (replace namespace and pod name)
+kubectl logs -n tenant-10001 <pod-name> -c flink-main-container --previous
+
 # Check Flink Operator logs
 kubectl logs -n flink-operator deploy/flink-kubernetes-operator -f
 
 # Check FlinkDeployment status
-kubectl describe flinkdeployment -n tenant-demo
+kubectl describe flinkdeployment -n tenant-10001
 
 # Check MinIO is accessible (Mode 2)
 curl http://localhost:9000/minio/health/live

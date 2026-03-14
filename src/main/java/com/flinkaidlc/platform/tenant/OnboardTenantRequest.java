@@ -18,8 +18,8 @@ public record OnboardTenantRequest(
 
     @NotBlank(message = "slug must not be blank")
     @Pattern(
-        regexp = "^[a-z0-9-]{3,63}$",
-        message = "slug must match ^[a-z0-9-]{3,63}$"
+        regexp = "^[0-9]{5}$",
+        message = "slug must be exactly 5 digits"
     )
     String slug,
 

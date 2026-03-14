@@ -7,6 +7,7 @@ import TenantDashboardPage from './pages/TenantDashboardPage';
 import PipelineListPage from './pages/PipelineListPage';
 import PipelineEditorPage from './pages/PipelineEditorPage';
 import PipelineDetailPage from './pages/PipelineDetailPage';
+import DemoPipelinePage from './pages/DemoPipelinePage';
 
 export default function App() {
   return (
@@ -53,6 +54,14 @@ export default function App() {
             element={
               <ProtectedRoute>
                 <PipelineDetailPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/demo"
+            element={
+              <ProtectedRoute>
+                <DemoPipelinePage />
               </ProtectedRoute>
             }
           />

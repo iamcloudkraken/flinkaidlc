@@ -295,6 +295,7 @@ public class PipelineService {
                 s.setAvroSubject(kafka.avroSubject());
                 s.setWatermarkColumn(kafka.watermarkColumn());
                 s.setWatermarkDelayMs(kafka.watermarkDelayMs());
+                s.setColumns(kafka.columns() != null ? kafka.columns() : new ArrayList<>());
                 yield s;
             }
             case S3SourceRequest s3 -> {
@@ -322,6 +323,7 @@ public class PipelineService {
                 s.setSchemaRegistryUrl(kafka.schemaRegistryUrl());
                 s.setAvroSubject(kafka.avroSubject());
                 s.setDeliveryGuarantee(kafka.deliveryGuarantee() != null ? kafka.deliveryGuarantee() : DeliveryGuarantee.AT_LEAST_ONCE);
+                s.setColumns(kafka.columns() != null ? kafka.columns() : new ArrayList<>());
                 yield s;
             }
             case S3SinkRequest s3 -> {

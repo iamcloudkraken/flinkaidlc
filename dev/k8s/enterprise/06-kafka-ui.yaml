@@ -17,6 +17,7 @@ spec:
         app: kafka-ui
         app.kubernetes.io/part-of: flink-platform-enterprise
     spec:
+      enableServiceLinks: false
       containers:
         - name: kafka-ui
           image: provectuslabs/kafka-ui:latest

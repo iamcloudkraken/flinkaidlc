@@ -4,6 +4,11 @@ import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
+
+import java.util.ArrayList;
+import java.util.List;
 
 @Entity
 @DiscriminatorValue("KAFKA")
@@ -31,4 +36,8 @@ public class KafkaPipelineSink extends PipelineSink {
     @Enumerated(EnumType.STRING)
     @Column(name = "delivery_guarantee", length = 20)
     private DeliveryGuarantee deliveryGuarantee = DeliveryGuarantee.AT_LEAST_ONCE;
+
+    @Column(name = "columns", columnDefinition = "jsonb")
+    @JdbcTypeCode(SqlTypes.JSON)
+    private List<ColumnDefinition> columns = new ArrayList<>();
 }

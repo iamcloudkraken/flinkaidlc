@@ -1,0 +1,52 @@
+apiVersion: flink.apache.org/v1beta1
+kind: FlinkDeployment
+metadata:
+  name: pipeline-demo
+  namespace: tenant-10001
+  labels:
+    app.kubernetes.io/managed-by: flink-platform
+    tenant-slug: "10001"
+spec:
+  image: flinkaidlc-flink-sql-runner:latest
+  imagePullPolicy: Never
+  flinkVersion: v1_18
+  serviceAccount: flink
+
+  flinkConfiguration:
+    taskmanager.numberOfTaskSlots: "2"
+    # Use hashmap backend (no S3 needed for local demo)
+    state.backend: hashmap
+    execution.checkpointing.interval: 30000ms
+    restart-strategy: fixed-delay
+    restart-strategy.fixed-delay.attempts: "3"
+    # Kafka consumer tuning
+    table.exec.source.idle-timeout: 30000ms
+
+  jobManager:
+    resource:
+      memory: "1024m"
+      cpu: 0.5
+
+  taskManager:
+    resource:
+      memory: "1024m"
+      cpu: 1.0
+
+  job:
+    jarURI: local:///opt/flink/usrlib/sql-runner.jar
+    args: ["/opt/flink/usrlib/sql-scripts/statements.sql"]
+    parallelism: 1
+    upgradeMode: stateless
+    state: running
+
+  podTemplate:
+    spec:
+      volumes:
+        - name: sql-scripts
+          configMap:
+            name: demo-enrichment-sql
+      containers:
+        - name: flink-main-container
+          volumeMounts:
+            - name: sql-scripts
+              mountPath: /opt/flink/usrlib/sql-scripts

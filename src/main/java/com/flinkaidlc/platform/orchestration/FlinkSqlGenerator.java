@@ -53,19 +53,22 @@ public class FlinkSqlGenerator {
 
     private String generateKafkaSourceDdl(KafkaPipelineSource source) {
         StringBuilder sb = new StringBuilder();
-        sb.append("CREATE TABLE ").append(escape(source.getTableName())).append(" (\n");
-        sb.append("  `data` BYTES");
+        sb.append("CREATE TABLE ").append(escape(source.getTableName()));
 
-        // Add watermark clause if watermark column is specified
-        if (source.getWatermarkColumn() != null && !source.getWatermarkColumn().isBlank()) {
-            long delayMs = source.getWatermarkDelayMs() != null ? source.getWatermarkDelayMs() : 5000L;
-            sb.append(",\n  `").append(source.getWatermarkColumn()).append("` TIMESTAMP(3)");
-            sb.append(",\n  WATERMARK FOR `").append(source.getWatermarkColumn())
-              .append("` AS `").append(source.getWatermarkColumn())
-              .append("` - INTERVAL '").append(delayMs).append("' MILLISECOND");
+        List<ColumnDefinition> columns = source.getColumns();
+        if (columns != null && !columns.isEmpty()) {
+            sb.append(" (\n");
+            for (int i = 0; i < columns.size(); i++) {
+                ColumnDefinition col = columns.get(i);
+                sb.append("  `").append(escape(col.name())).append("` ").append(col.type());
+                if (i < columns.size() - 1) sb.append(",");
+                sb.append("\n");
+            }
+            sb.append(") WITH (\n");
+        } else {
+            sb.append(" WITH (\n");
         }
 
-        sb.append("\n) WITH (\n");
         sb.append("  'connector' = 'kafka',\n");
         sb.append("  'topic' = '").append(escape(source.getTopic())).append("',\n");
         sb.append("  'properties.bootstrap.servers' = '").append(escape(source.getBootstrapServers())).append("',\n");
@@ -80,9 +83,22 @@ public class FlinkSqlGenerator {
 
     private String generateKafkaSinkDdl(KafkaPipelineSink sink) {
         StringBuilder sb = new StringBuilder();
-        sb.append("CREATE TABLE ").append(escape(sink.getTableName())).append(" (\n");
-        sb.append("  `data` BYTES\n");
-        sb.append(") WITH (\n");
+        sb.append("CREATE TABLE ").append(escape(sink.getTableName()));
+
+        List<ColumnDefinition> columns = sink.getColumns();
+        if (columns != null && !columns.isEmpty()) {
+            sb.append(" (\n");
+            for (int i = 0; i < columns.size(); i++) {
+                ColumnDefinition col = columns.get(i);
+                sb.append("  `").append(escape(col.name())).append("` ").append(col.type());
+                if (i < columns.size() - 1) sb.append(",");
+                sb.append("\n");
+            }
+            sb.append(") WITH (\n");
+        } else {
+            sb.append(" WITH (\n");
+        }
+
         sb.append("  'connector' = 'kafka',\n");
         sb.append("  'topic' = '").append(escape(sink.getTopic())).append("',\n");
         sb.append("  'properties.bootstrap.servers' = '").append(escape(sink.getBootstrapServers())).append("',\n");

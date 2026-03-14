@@ -1,0 +1,121 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: demo-seed
+  namespace: ns-enterprise
+  labels:
+    app.kubernetes.io/part-of: flink-platform-enterprise
+    app.kubernetes.io/name: demo-seed
+spec:
+  ttlSecondsAfterFinished: 300
+  template:
+    spec:
+      restartPolicy: OnFailure
+      containers:
+        - name: seed
+          image: confluentinc/cp-kafka:7.6.0
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: KAFKA_BOOTSTRAP
+              value: "kafka.ns-enterprise.svc.cluster.local:29092"
+            - name: SCHEMA_REGISTRY
+              value: "http://schema-registry.ns-enterprise.svc.cluster.local:8081"
+          command:
+            - /bin/bash
+            - -c
+            - |
+              set -e
+
+              # ── Wait for Kafka ────────────────────────────────────────────
+              echo "Waiting for Kafka..."
+              until kafka-topics --bootstrap-server "$KAFKA_BOOTSTRAP" --list >/dev/null 2>&1; do
+                sleep 3
+              done
+              echo "Kafka ready."
+
+              # ── Wait for Schema Registry ──────────────────────────────────
+              echo "Waiting for Schema Registry..."
+              until curl -sf "$SCHEMA_REGISTRY/subjects" >/dev/null; do
+                sleep 3
+              done
+              echo "Schema Registry ready."
+
+              # ── Create topics ─────────────────────────────────────────────
+              kafka-topics --bootstrap-server "$KAFKA_BOOTSTRAP" \
+                --create --if-not-exists \
+                --topic demo.events \
+                --partitions 3 \
+                --replication-factor 1 \
+                --config retention.ms=86400000
+              echo "Topic demo.events ready."
+
+              kafka-topics --bootstrap-server "$KAFKA_BOOTSTRAP" \
+                --create --if-not-exists \
+                --topic demo.enriched-events \
+                --partitions 3 \
+                --replication-factor 1 \
+                --config retention.ms=86400000
+              echo "Topic demo.enriched-events ready."
+
+              # ── Register source schema (demo.events-value) ────────────────
+              # Models a raw clickstream event emitted by the frontend/app
+              SOURCE_SCHEMA=$(cat <<'AVRO'
+              {
+                "type": "record",
+                "name": "ClickEvent",
+                "namespace": "com.flinkaidlc.demo",
+                "doc": "Raw clickstream event — source topic for demo Flink job",
+                "fields": [
+                  {"name": "event_id",   "type": "string",  "doc": "UUID of the event"},
+                  {"name": "user_id",    "type": "string",  "doc": "User identifier"},
+                  {"name": "session_id", "type": "string",  "doc": "Browser session identifier"},
+                  {"name": "page",       "type": "string",  "doc": "Page path that was visited"},
+                  {"name": "action",     "type": "string",  "doc": "User action: view | click | scroll"},
+                  {"name": "ts_ms",      "type": "long",    "doc": "Event timestamp in epoch-millis"}
+                ]
+              }
+              AVRO
+              )
+
+              PAYLOAD=$(echo "$SOURCE_SCHEMA" | python3 -c "import json,sys; print(json.dumps({'schema': sys.stdin.read()}))")
+              curl -sf -X POST "$SCHEMA_REGISTRY/subjects/demo.events-value/versions" \
+                -H "Content-Type: application/vnd.schemaregistry.v1+json" \
+                -d "$PAYLOAD"
+              echo "Source schema registered."
+
+              # ── Register sink schema (demo.enriched-events-value) ─────────
+              # Models the enriched event written by the Flink job
+              SINK_SCHEMA=$(cat <<'AVRO'
+              {
+                "type": "record",
+                "name": "EnrichedClickEvent",
+                "namespace": "com.flinkaidlc.demo",
+                "doc": "Enriched clickstream event — sink topic for demo Flink job",
+                "fields": [
+                  {"name": "event_id",       "type": "string", "doc": "UUID of the original event"},
+                  {"name": "user_id",        "type": "string", "doc": "User identifier"},
+                  {"name": "session_id",     "type": "string", "doc": "Browser session identifier"},
+                  {"name": "page",           "type": "string", "doc": "Page path that was visited"},
+                  {"name": "action",         "type": "string", "doc": "User action: view | click | scroll"},
+                  {"name": "ts_ms",          "type": "long",   "doc": "Event timestamp in epoch-millis (plain long → BIGINT)"},
+                  {"name": "enriched_event", "type": "string", "doc": "Human-readable summary added by Flink: '<action> on <page> by user <user_id>'"}
+                ]
+              }
+              AVRO
+              )
+
+              PAYLOAD=$(echo "$SINK_SCHEMA" | python3 -c "import json,sys; print(json.dumps({'schema': sys.stdin.read()}))")
+              curl -sf -X POST "$SCHEMA_REGISTRY/subjects/demo.enriched-events-value/versions" \
+                -H "Content-Type: application/vnd.schemaregistry.v1+json" \
+                -d "$PAYLOAD"
+              echo "Sink schema registered."
+
+              echo ""
+              echo "=== Demo seed complete ==="
+              echo "  Source topic:  demo.events              (schema: demo.events-value)"
+              echo "  Sink topic:    demo.enriched-events     (schema: demo.enriched-events-value)"
+              echo ""
+              echo "Flink SQL reference:"
+              echo "  Source: kafka connector, topic=demo.events, format=avro-confluent"
+              echo "  Sink:   kafka connector, topic=demo.enriched-events, format=avro-confluent"
+              echo "  Schema Registry URL: http://schema-registry.ns-enterprise.svc.cluster.local:8081"

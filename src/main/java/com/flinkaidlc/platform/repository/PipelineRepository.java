@@ -12,6 +12,7 @@ import java.util.List;
 import java.util.UUID;
 
 public interface PipelineRepository extends JpaRepository<Pipeline, UUID> {
+    boolean existsByTenantIdAndName(UUID tenantId, String name);
     List<Pipeline> findByTenantId(UUID tenantId);
     Page<Pipeline> findByTenantId(UUID tenantId, Pageable pageable);
     Page<Pipeline> findByTenantIdAndStatus(UUID tenantId, PipelineStatus status, Pageable pageable);

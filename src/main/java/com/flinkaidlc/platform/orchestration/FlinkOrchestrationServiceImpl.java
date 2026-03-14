@@ -42,6 +42,18 @@ public class FlinkOrchestrationServiceImpl implements FlinkOrchestrationService 
     private static final String FLINK_API_VERSION = "v1beta1";
     private static final String FLINK_KIND_PLURAL = "flinkdeployments";
 
+    /** Explicit CRD context — avoids Fabric8 auto-discovery which fails when the CRD
+     *  isn't in the client's cached API groups at startup time. */
+    private static final CustomResourceDefinitionContext FLINK_CRD_CTX =
+        new CustomResourceDefinitionContext.Builder()
+            .withGroup(FLINK_API_GROUP)
+            .withVersion(FLINK_API_VERSION)
+            .withScope("Namespaced")
+            .withName("flinkdeployments." + FLINK_API_GROUP)
+            .withPlural(FLINK_KIND_PLURAL)
+            .withKind("FlinkDeployment")
+            .build();
+
     private final KubernetesClient k8sClient;
     private final FlinkSqlGenerator sqlGenerator;
     private final FlinkDeploymentBuilder deploymentBuilder;
@@ -182,7 +194,7 @@ public class FlinkOrchestrationServiceImpl implements FlinkOrchestrationService 
 
         // 2. Delete FlinkDeployment CRD
         try {
-            k8sClient.genericKubernetesResources(FLINK_API_GROUP + "/" + FLINK_API_VERSION, FLINK_KIND_PLURAL)
+            k8sClient.genericKubernetesResources(FLINK_CRD_CTX)
                 .inNamespace(namespace)
                 .withName(resourceName)
                 .delete();
@@ -213,7 +225,7 @@ public class FlinkOrchestrationServiceImpl implements FlinkOrchestrationService 
 
         try {
             var deployments = k8sClient
-                .genericKubernetesResources(FLINK_API_GROUP + "/" + FLINK_API_VERSION, FLINK_KIND_PLURAL)
+                .genericKubernetesResources(FLINK_CRD_CTX)
                 .inNamespace(namespace)
                 .withLabel(FlinkDeploymentBuilder.MANAGED_BY_LABEL, FlinkDeploymentBuilder.MANAGED_BY_VALUE)
                 .withLabel("tenant-id", tenantId.toString())
@@ -254,7 +266,7 @@ public class FlinkOrchestrationServiceImpl implements FlinkOrchestrationService 
     @SuppressWarnings("unchecked")
     private void createOrReplaceFlinkDeployment(String namespace, Map<String, Object> manifest) {
         var resource = k8sClient
-            .genericKubernetesResources(FLINK_API_GROUP + "/" + FLINK_API_VERSION, FLINK_KIND_PLURAL)
+            .genericKubernetesResources(FLINK_CRD_CTX)
             .inNamespace(namespace);
 
         // Build GenericKubernetesResource from raw map
@@ -284,7 +296,7 @@ public class FlinkOrchestrationServiceImpl implements FlinkOrchestrationService 
         );
 
         k8sClient
-            .genericKubernetesResources(FLINK_API_GROUP + "/" + FLINK_API_VERSION, FLINK_KIND_PLURAL)
+            .genericKubernetesResources(FLINK_CRD_CTX)
             .inNamespace(namespace)
             .withName(resourceName)
             .patch(io.fabric8.kubernetes.client.utils.Serialization.asJson(patch));

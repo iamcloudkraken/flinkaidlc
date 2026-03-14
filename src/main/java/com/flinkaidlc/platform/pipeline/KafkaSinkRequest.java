@@ -1,7 +1,10 @@
 package com.flinkaidlc.platform.pipeline;
 
+import com.flinkaidlc.platform.domain.ColumnDefinition;
 import com.flinkaidlc.platform.domain.DeliveryGuarantee;
 import jakarta.validation.constraints.NotBlank;
+
+import java.util.List;
 
 public record KafkaSinkRequest(
         @NotBlank String tableName,
@@ -9,7 +12,8 @@ public record KafkaSinkRequest(
         @NotBlank String bootstrapServers,
         @NotBlank String schemaRegistryUrl,
         @NotBlank String avroSubject,
-        DeliveryGuarantee deliveryGuarantee
+        DeliveryGuarantee deliveryGuarantee,
+        List<ColumnDefinition> columns
 ) implements PipelineSinkRequest {
     public KafkaSinkRequest {
         if (deliveryGuarantee == null) {

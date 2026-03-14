@@ -27,6 +27,17 @@ export interface CreateTenantResponse {
   fidSecret: string;
 }
 
+export interface TenantSummary {
+  id: string;
+  name: string;
+  slug: string;
+}
+
+export async function listTenants(): Promise<TenantSummary[]> {
+  const { data } = await apiClient.get<TenantSummary[]>('/tenants');
+  return data;
+}
+
 export async function getTenant(tenantId: string): Promise<Tenant> {
   const { data } = await apiClient.get<Tenant>(`/tenants/${tenantId}`);
   return data;
