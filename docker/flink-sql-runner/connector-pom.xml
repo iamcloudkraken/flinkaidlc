@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Used only to download Flink connector JARs and their transitive deps.
+     Maven copies them to /connector-deps during the Docker build stage.  -->
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+    <groupId>deps</groupId>
+    <artifactId>flink-connector-deps</artifactId>
+    <version>1.0</version>
+    <packaging>pom</packaging>
+
+    <repositories>
+        <repository>
+            <id>confluent</id>
+            <url>https://packages.confluent.io/maven/</url>
+        </repository>
+    </repositories>
+
+    <dependencies>
+        <!-- Kafka SQL connector (fat JAR — includes kafka-clients) -->
+        <dependency>
+            <groupId>org.apache.flink</groupId>
+            <artifactId>flink-sql-connector-kafka</artifactId>
+            <version>3.1.0-1.18</version>
+        </dependency>
+
+        <!-- Avro + Confluent Schema Registry format -->
+        <dependency>
+            <groupId>org.apache.flink</groupId>
+            <artifactId>flink-avro-confluent-registry</artifactId>
+            <version>1.18.1</version>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.flink</groupId>
+            <artifactId>flink-avro</artifactId>
+            <version>1.18.1</version>
+        </dependency>
+
+        <!-- Confluent Schema Registry client (only in Confluent repo) -->
+        <dependency>
+            <groupId>io.confluent</groupId>
+            <artifactId>kafka-schema-registry-client</artifactId>
+            <version>7.6.0</version>
+        </dependency>
+
+        <!-- S3 filesystem plugin for checkpoint/savepoint storage (must live in plugins/ in image) -->
+        <dependency>
+            <groupId>org.apache.flink</groupId>
+            <artifactId>flink-s3-fs-hadoop</artifactId>
+            <version>1.18.1</version>
+        </dependency>
+    </dependencies>
+</project>

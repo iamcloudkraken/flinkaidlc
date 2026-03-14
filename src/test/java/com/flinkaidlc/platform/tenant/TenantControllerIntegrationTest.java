@@ -55,7 +55,7 @@ class TenantControllerIntegrationTest extends AbstractIntegrationTest {
         String body = """
             {
               "name": "Acme Analytics",
-              "slug": "acme-it",
+              "slug": "10001",
               "contactEmail": "admin@acme.com",
               "maxPipelines": 10,
               "maxTotalParallelism": 50
@@ -71,13 +71,13 @@ class TenantControllerIntegrationTest extends AbstractIntegrationTest {
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.CREATED);
         OnboardTenantResponse resp = response.getBody();
         assertThat(resp).isNotNull();
-        assertThat(resp.slug()).isEqualTo("acme-it");
+        assertThat(resp.slug()).isEqualTo("10001");
         assertThat(resp.fid()).isNotBlank();
         assertThat(resp.fidSecret()).isNotBlank();
         assertThat(resp.namespaceProvisioned()).isTrue();
         assertThat(resp.tenantId()).isNotNull();
 
-        verify(provisioner).provision(eq("acme-it"), eq(10), eq(50));
+        verify(provisioner).provision(eq("10001"), eq(10), eq(50));
         verify(oauth2Client).registerClient(anyString(), anyString());
     }
 
@@ -86,7 +86,7 @@ class TenantControllerIntegrationTest extends AbstractIntegrationTest {
         String body = """
             {
               "name": "Acme Analytics",
-              "slug": "acme-dup",
+              "slug": "10002",
               "contactEmail": "admin@acme.com",
               "maxPipelines": 10,
               "maxTotalParallelism": 50
@@ -107,7 +107,7 @@ class TenantControllerIntegrationTest extends AbstractIntegrationTest {
         );
 
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
-        assertThat(response.getBody()).contains("acme-dup");
+        assertThat(response.getBody()).contains("10002");
     }
 
     @Test
@@ -140,7 +140,7 @@ class TenantControllerIntegrationTest extends AbstractIntegrationTest {
         String body = """
             {
               "name": "Failing Corp",
-              "slug": "failing",
+              "slug": "10003",
               "contactEmail": "admin@failing.com",
               "maxPipelines": 5,
               "maxTotalParallelism": 10
@@ -155,7 +155,7 @@ class TenantControllerIntegrationTest extends AbstractIntegrationTest {
 
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.SERVICE_UNAVAILABLE);
         // Confirm no orphaned tenant in DB
-        assertThat(tenantRepository.findBySlug("failing")).isEmpty();
+        assertThat(tenantRepository.findBySlug("10003")).isEmpty();
     }
 
     @Test
@@ -166,7 +166,7 @@ class TenantControllerIntegrationTest extends AbstractIntegrationTest {
         String body = """
             {
               "name": "OAuth Fail Corp",
-              "slug": "oauth-fail",
+              "slug": "10004",
               "contactEmail": "admin@fail.com",
               "maxPipelines": 5,
               "maxTotalParallelism": 10
@@ -180,9 +180,9 @@ class TenantControllerIntegrationTest extends AbstractIntegrationTest {
         );
 
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.SERVICE_UNAVAILABLE);
-        assertThat(tenantRepository.findBySlug("oauth-fail")).isEmpty();
+        assertThat(tenantRepository.findBySlug("10004")).isEmpty();
         // K8s compensating deprovision should be attempted
-        verify(provisioner).deprovision("oauth-fail");
+        verify(provisioner).deprovision("10004");
     }
 
     // ---- GET /api/v1/tenants/{tenantId} ----

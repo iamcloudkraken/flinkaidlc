@@ -8,6 +8,7 @@ import com.flinkaidlc.platform.repository.PipelineDeploymentRepository;
 import com.flinkaidlc.platform.repository.PipelineRepository;
 import io.fabric8.kubernetes.api.model.GenericKubernetesResource;
 import io.fabric8.kubernetes.client.KubernetesClient;
+import io.fabric8.kubernetes.client.dsl.base.CustomResourceDefinitionContext;
 import io.fabric8.kubernetes.client.informers.ResourceEventHandler;
 import io.fabric8.kubernetes.client.informers.SharedIndexInformer;
 import jakarta.annotation.PostConstruct;
@@ -44,6 +45,16 @@ public class FlinkDeploymentStatusSyncer {
     private static final String FLINK_API_VERSION_FULL = "flink.apache.org/v1beta1";
     private static final String FLINK_KIND_PLURAL = "flinkdeployments";
 
+    private static final CustomResourceDefinitionContext FLINK_CRD_CTX =
+        new CustomResourceDefinitionContext.Builder()
+            .withGroup(FLINK_API_GROUP)
+            .withVersion("v1beta1")
+            .withScope("Namespaced")
+            .withName("flinkdeployments." + FLINK_API_GROUP)
+            .withPlural(FLINK_KIND_PLURAL)
+            .withKind("FlinkDeployment")
+            .build();
+
     private final KubernetesClient k8sClient;
     private final PipelineRepository pipelineRepository;
     private final PipelineDeploymentRepository deploymentRepository;
@@ -68,7 +79,7 @@ public class FlinkDeploymentStatusSyncer {
         try {
             // Fabric8 6.x: use genericKubernetesResources DSL — sharedIndexInformerForCustomResource removed
             informer = k8sClient
-                .genericKubernetesResources(FLINK_API_VERSION_FULL, FLINK_KIND_PLURAL)
+                .genericKubernetesResources(FLINK_CRD_CTX)
                 .inAnyNamespace()
                 .inform(new ResourceEventHandler<>() {
                     @Override
@@ -112,7 +123,7 @@ public class FlinkDeploymentStatusSyncer {
         log.debug("FlinkDeployment fallback poll starting");
         try {
             List<GenericKubernetesResource> deployments = k8sClient
-                .genericKubernetesResources(FLINK_API_VERSION_FULL, FLINK_KIND_PLURAL)
+                .genericKubernetesResources(FLINK_CRD_CTX)
                 .inAnyNamespace()
                 .withLabel(FlinkDeploymentBuilder.MANAGED_BY_LABEL, FlinkDeploymentBuilder.MANAGED_BY_VALUE)
                 .list()

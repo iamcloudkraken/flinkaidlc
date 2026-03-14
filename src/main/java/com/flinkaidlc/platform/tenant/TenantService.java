@@ -143,6 +143,16 @@ public class TenantService {
     }
 
     /**
+     * Returns a minimal summary of all active tenants — used by the public login dropdown.
+     */
+    public List<TenantSummary> listActiveTenants() {
+        return tenantRepository.findAll().stream()
+            .filter(t -> t.getStatus() == com.flinkaidlc.platform.domain.TenantStatus.ACTIVE)
+            .map(TenantSummary::from)
+            .toList();
+    }
+
+    /**
      * Returns tenant metadata plus current resource usage counts.
      *
      * @throws TenantNotFoundException if the tenant does not exist

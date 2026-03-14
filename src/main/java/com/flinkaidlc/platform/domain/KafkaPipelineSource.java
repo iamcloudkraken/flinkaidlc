@@ -7,6 +7,9 @@ import lombok.Setter;
 import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.type.SqlTypes;
 
+import java.util.ArrayList;
+import java.util.List;
+
 @Entity
 @DiscriminatorValue("KAFKA")
 @Getter
@@ -42,4 +45,8 @@ public class KafkaPipelineSource extends PipelineSource {
     @Column(name = "extra_properties", columnDefinition = "jsonb")
     @JdbcTypeCode(SqlTypes.JSON)
     private String extraProperties = "{}";
+
+    @Column(name = "columns", columnDefinition = "jsonb")
+    @JdbcTypeCode(SqlTypes.JSON)
+    private List<ColumnDefinition> columns = new ArrayList<>();
 }

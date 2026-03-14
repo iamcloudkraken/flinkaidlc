@@ -8,6 +8,7 @@ import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.List;
 import java.util.UUID;
 
 /**
@@ -24,6 +25,15 @@ public class TenantController {
 
     public TenantController(TenantService tenantService) {
         this.tenantService = tenantService;
+    }
+
+    /**
+     * Public list of active tenants — used by the login page dropdown.
+     * Returns only id and name (no sensitive fields).
+     */
+    @GetMapping
+    public ResponseEntity<List<TenantSummary>> listTenants() {
+        return ResponseEntity.ok(tenantService.listActiveTenants());
     }
 
     /**

@@ -1,8 +1,9 @@
 package com.flinkaidlc.platform.config;
 
 import com.flinkaidlc.platform.domain.*;
+import com.flinkaidlc.platform.exception.KubernetesConflictException;
+import com.flinkaidlc.platform.k8s.ITenantNamespaceProvisioner;
 import com.flinkaidlc.platform.repository.PipelineRepository;
-import com.flinkaidlc.platform.repository.TenantRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
@@ -34,39 +35,53 @@ public class LocalDataSeeder {
     /** Must match {@link LocalSecurityConfig#LOCAL_TENANT_ID} */
     private static final UUID DEMO_TENANT_ID = UUID.fromString("00000000-0000-0000-0000-000000000001");
 
-    private final TenantRepository tenantRepository;
+    /** Demo tenant for the K8s Flink pipeline demo (slug=10001, namespace=tenant-10001) */
+    private static final UUID TENANT_10001_ID = UUID.fromString("00000000-0000-0000-0000-000000010001");
+
     private final PipelineRepository pipelineRepository;
     private final JdbcTemplate jdbcTemplate;
+    private final ITenantNamespaceProvisioner provisioner;
 
-    public LocalDataSeeder(TenantRepository tenantRepository, PipelineRepository pipelineRepository,
-                           JdbcTemplate jdbcTemplate) {
-        this.tenantRepository = tenantRepository;
+    public LocalDataSeeder(PipelineRepository pipelineRepository, JdbcTemplate jdbcTemplate,
+                           ITenantNamespaceProvisioner provisioner) {
         this.pipelineRepository = pipelineRepository;
         this.jdbcTemplate = jdbcTemplate;
+        this.provisioner = provisioner;
     }
 
     @EventListener(ApplicationReadyEvent.class)
     @Transactional
     public void seed() {
-        if (tenantRepository.count() > 0) {
-            log.info("[local] Seed data already present, skipping.");
-            return;
-        }
-
-        log.info("[local] Seeding demo tenant and pipeline...");
+        log.info("[local] Seeding demo tenants (idempotent)...");
 
         // Insert tenant directly via JDBC to ensure the deterministic UUID is used,
         // bypassing Hibernate's @UuidGenerator which ignores pre-set values on merge().
-        jdbcTemplate.update(
+        // ON CONFLICT DO NOTHING makes this safe to re-run.
+        int demoInserted = jdbcTemplate.update(
             "INSERT INTO tenants (tenant_id, slug, name, contact_email, fid, status, " +
             "max_pipelines, max_total_parallelism, created_at, updated_at) " +
             "VALUES (?, 'demo', 'Demo Org', 'dev@local.dev', 'demo-fid-local', 'ACTIVE', " +
-            "10, 20, NOW(), NOW())",
+            "10, 20, NOW(), NOW()) ON CONFLICT (tenant_id) DO NOTHING",
             DEMO_TENANT_ID
         );
+        log.info("[local] Ensured demo tenant: id={} slug=demo", DEMO_TENANT_ID);
+        if (demoInserted > 0) {
+            provisionNamespace("demo", 10, 20);
+        }
 
-        log.info("[local] Created demo tenant: id={} slug=demo", DEMO_TENANT_ID);
+        int tenant10001Inserted = jdbcTemplate.update(
+            "INSERT INTO tenants (tenant_id, slug, name, contact_email, fid, status, " +
+            "max_pipelines, max_total_parallelism, created_at, updated_at) " +
+            "VALUES (?, '10001', 'Tenant 10001', 'dev@10001.local', 'fid-10001-local', 'ACTIVE', " +
+            "10, 20, NOW(), NOW()) ON CONFLICT (tenant_id) DO NOTHING",
+            TENANT_10001_ID
+        );
+        log.info("[local] Ensured tenant 10001: id={} slug=10001", TENANT_10001_ID);
+        if (tenant10001Inserted > 0) {
+            provisionNamespace("10001", 10, 20);
+        }
 
+        if (!pipelineRepository.existsByTenantIdAndName(DEMO_TENANT_ID, "Hello World Pipeline")) {
         // Create demo pipeline using the known tenant ID
         Pipeline pipeline = new Pipeline();
         pipeline.setTenantId(DEMO_TENANT_ID);
@@ -100,6 +115,18 @@ public class LocalDataSeeder {
 
         pipeline = pipelineRepository.save(pipeline);
         log.info("[local] Created demo pipeline: id={} name='Hello World Pipeline'", pipeline.getPipelineId());
+        } // end pipeline guard
         log.info("[local] Seed complete. Open http://localhost:3000 to get started.");
+    }
+
+    private void provisionNamespace(String slug, int maxPipelines, int maxParallelism) {
+        try {
+            provisioner.provision(slug, maxPipelines, maxParallelism);
+            log.info("[local] Provisioned K8s namespace for slug={}", slug);
+        } catch (KubernetesConflictException e) {
+            log.debug("[local] Namespace for slug={} already exists, skipping", slug);
+        } catch (Exception e) {
+            log.warn("[local] Could not provision namespace for slug={}: {}", slug, e.getMessage());
+        }
     }
 }

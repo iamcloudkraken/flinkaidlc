@@ -34,6 +34,12 @@ export default function NavBar() {
             >
               Pipelines
             </Link>
+            <Link
+              to="/demo"
+              className="bg-amber-400 hover:bg-amber-300 text-indigo-900 font-semibold px-3 py-1 rounded transition-colors"
+            >
+              Demo
+            </Link>
             <button
               onClick={handleLogout}
               className="bg-indigo-500 hover:bg-indigo-400 px-3 py-1 rounded transition-colors"

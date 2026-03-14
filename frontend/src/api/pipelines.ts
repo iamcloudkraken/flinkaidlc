@@ -126,6 +126,7 @@ export interface KafkaSourceRequest {
   avroSubject?: string;
   watermarkColumn?: string;
   watermarkDelayMs?: number;
+  columns?: ColumnDefinition[];
 }
 
 export interface KafkaSinkRequest {
@@ -136,6 +137,7 @@ export interface KafkaSinkRequest {
   schemaRegistryUrl?: string;
   avroSubject?: string;
   deliveryGuarantee?: string;
+  columns?: ColumnDefinition[];
 }
 
 export interface S3SourceRequest {
@@ -240,16 +242,42 @@ export async function getPipeline(id: string): Promise<Pipeline> {
 export async function createPipeline(
   payload: CreatePipelineRequest,
 ): Promise<Pipeline> {
-  const { data } = await apiClient.post<Pipeline>('/pipelines', payload);
-  return data;
+  const { data } = await apiClient.post<any>('/pipelines', payload);
+  return {
+    id: data.pipelineId,
+    name: data.name,
+    description: data.description,
+    status: data.status,
+    parallelism: data.parallelism,
+    checkpointIntervalMs: data.checkpointIntervalMs,
+    upgradeMode: data.upgradeMode,
+    sqlQuery: data.sqlQuery,
+    sources: data.sources ?? [],
+    sinks: data.sinks ?? [],
+    createdAt: data.createdAt,
+    updatedAt: data.updatedAt,
+  };
 }
 
 export async function updatePipeline(
   id: string,
   payload: UpdatePipelineRequest,
 ): Promise<Pipeline> {
-  const { data } = await apiClient.put<Pipeline>(`/pipelines/${id}`, payload);
-  return data;
+  const { data } = await apiClient.put<any>(`/pipelines/${id}`, payload);
+  return {
+    id: data.pipelineId ?? id,
+    name: data.name,
+    description: data.description,
+    status: data.status,
+    parallelism: data.parallelism,
+    checkpointIntervalMs: data.checkpointIntervalMs,
+    upgradeMode: data.upgradeMode,
+    sqlQuery: data.sqlQuery,
+    sources: data.sources ?? [],
+    sinks: data.sinks ?? [],
+    createdAt: data.createdAt,
+    updatedAt: data.updatedAt,
+  };
 }
 
 export async function suspendPipeline(id: string): Promise<Pipeline> {

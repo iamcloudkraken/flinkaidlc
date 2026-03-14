@@ -16,7 +16,7 @@ metadata:
     app.kubernetes.io/name: backend
 rules:
   - apiGroups: [""]
-    resources: ["namespaces", "serviceaccounts", "resourcequotas"]
+    resources: ["namespaces", "serviceaccounts", "resourcequotas", "configmaps"]
     verbs: ["get", "list", "create", "update", "patch", "delete"]
   - apiGroups: ["rbac.authorization.k8s.io"]
     resources: ["roles", "rolebindings"]
@@ -26,7 +26,7 @@ rules:
     verbs: ["get", "list", "create", "update", "patch", "delete"]
   - apiGroups: ["flink.apache.org"]
     resources: ["flinkdeployments"]
-    verbs: ["get", "list", "create", "update", "patch", "delete"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding

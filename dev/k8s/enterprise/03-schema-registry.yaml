@@ -17,6 +17,7 @@ spec:
         app: schema-registry
         app.kubernetes.io/part-of: flink-platform-enterprise
     spec:
+      enableServiceLinks: false
       containers:
         - name: schema-registry
           image: confluentinc/cp-schema-registry:7.6.0

@@ -1,4 +1,4 @@
-.PHONY: up down logs build clean flink-ui infra k8s-setup k8s-build k8s-up k8s-down k8s-status
+.PHONY: up down logs build clean flink-ui infra k8s-setup k8s-build k8s-up k8s-down k8s-status k8s-demo-build k8s-demo-up k8s-demo-down
 
 ## Build the JAR then start all services
 up: build
@@ -73,7 +73,7 @@ k8s-setup:
 
 ## Build Docker images for K8s deployment (backend + frontend)
 .PHONY: k8s-build
-k8s-build:
+k8s-build: build
 	@echo "Building backend image..."
 	docker build -f docker/backend/Dockerfile -t flinkaidlc-backend:latest .
 	@echo "Building frontend image..."
@@ -106,6 +106,31 @@ k8s-down: k8s-guard
 	@echo "Deleting ns-controlplane..."
 	kubectl delete namespace ns-controlplane --ignore-not-found
 	@echo "Done. Tenant namespaces (tenant-*) preserved."
+
+## Build the Flink SQL runner image (needed once before k8s-demo-up)
+.PHONY: k8s-demo-build
+k8s-demo-build:
+	docker build -t flinkaidlc-flink-sql-runner:latest docker/flink-sql-runner
+
+## Deploy the demo enrichment pipeline (reads demo.events → writes demo.enriched-events)
+.PHONY: k8s-demo-up
+k8s-demo-up: k8s-guard
+	@echo "Applying demo pipeline manifests..."
+	kubectl apply -f dev/k8s/demo-pipeline/00-namespace-rbac.yaml
+	kubectl apply -f dev/k8s/demo-pipeline/01-sql-configmap.yaml
+	kubectl apply -f dev/k8s/demo-pipeline/02-flink-deployment.yaml
+	@echo ""
+	@echo "Demo pipeline deploying — watch status:"
+	@echo "  kubectl get flinkdeployment pipeline-demo -n tenant-10001 -w"
+	@echo ""
+	@echo "Once RUNNING, produce test events:"
+	@echo "  kubectl exec -n ns-enterprise deploy/kafka -- kafka-console-producer \\"
+	@echo "    --bootstrap-server localhost:29092 --topic demo.events"
+
+## Tear down the demo enrichment pipeline
+.PHONY: k8s-demo-down
+k8s-demo-down: k8s-guard
+	kubectl delete -f dev/k8s/demo-pipeline/ --ignore-not-found
 
 ## Show pod status across all platform namespaces
 .PHONY: k8s-status
